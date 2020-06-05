@@ -1,0 +1,15 @@
+// pest grammar for a single Locale Matcher test case.
+
+WHITESPACE = _{ " " }
+COMMENT = _{ "#" ~ not_newline* }
+newline = _{ "\n" | "\r\n" }
+not_newline = _{ !newline ~ ANY }
+
+tag_char = _{ ASCII_ALPHANUMERIC }
+tag = _{ tag_char+ }
+tag_separator = _{ "-" }
+locale = @{ ( tag ~ tag_separator)* ~ tag }
+list_separator = _{ "," }
+locale_list = { (locale ~ (list_separator ~ locale)*)? }
+field_separator = _{ ";" }
+test_case = {locale_list ~ field_separator ~ locale_list ~ field_separator ~ locale }
