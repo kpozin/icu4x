@@ -1,6 +1,6 @@
 [package]
-name = "icu-locale-matcher"
-description = "API for selecting Unicode Locale Identifiers based on ordered preferences"
+name = "icu-bytes-trie"
+description = "Implementation of a Trie data structure for arbitrary byte strings"
 version = "0.0.1"
 authors = ["The ICU4X Project Developers"]
 edition = "2018"
@@ -16,13 +16,13 @@ include = [
 
 [dependencies]
 bitflags = "1.2.1"
-icu-locale = { version = "0.0.1", path = "../locale" }
-linked-hash-map = "0.5.3"
-ordered-float = "1.0.2"
+thiserror = "1.0.20"
 
 [dev-dependencies]
 anyhow = "1.0.31"
 criterion = "0.3"
+pest = "2.1"
+pest_derive = "2.1"
 pretty_assertions = "0.6.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

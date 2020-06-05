@@ -1,8 +1,8 @@
 [workspace]
 
 members = [
+    "components/bytes-trie",
     "components/icu",
     "components/icu4x",
     "components/locale",
-    "components/locale-matcher"
 ]
