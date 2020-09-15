@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "components/bytes-trie",
     "components/cldr-json-data-provider",
     "components/data-provider",
     "components/fs-data-provider",
