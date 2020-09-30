@@ -1,11 +1,14 @@
+use std::convert::TryFrom;
+
 use {
     super::{
         errors::BytesTrieBuilderError,
-        node::{Node, RcNode, RcNodeTrait},
-        value_node::ValueNode,
+        final_value_node::FinalValueNode,
         linear_match_node::LinearMatchNode,
+        node::{Node, RcNode, RcNodeTrait, NodeTrait},
+        value_node::ValueNode,
     },
-    std::{collections::HashMap, rc::Rc, cell::RefCell},
+    std::{cell::RefCell, collections::HashSet, rc::Rc},
 };
 
 const MAX_KEY_LENGTH: usize = 0xffff;
@@ -20,33 +23,75 @@ enum State {
 }
 
 #[derive(Debug)]
-pub struct BytesTrieBuilder {
-    state: State,
-
+struct CommonData {
     /// Strings and sub-strings for linear-match nodes.
     strings: Rc<RefCell<Vec<u16>>>,
 
     root: Option<RcNode>,
 
     /// Hash set of nodes, maps from nodes to integer 1.
-    nodes: HashMap<RcNode, RcNode>,
+    nodes: HashSet<RcNode>,
 
     lookup_final_value_node: RcNode,
 }
 
-impl BytesTrieBuilder {
-    pub(crate) fn add_impl(&mut self, s: &[u16], value: i32) -> Result<(), BytesTrieBuilderError> {
-        if self.state != State::Adding {
-            return Err(BytesTrieBuilderError::AddAfterBuild);
+
+
+/// Initial state of `BytesTrieBuilder`.
+#[derive(Debug)]
+pub struct BytesTrieBuilder {
+    common_data: CommonData,
+}
+
+trait BytesTrieBuilderCommon {
+    fn common_data(&self) -> &CommonData;
+
+    fn common_data_mut(&mut self) -> &mut CommonData;
+
+    fn register_final_value(&mut self, value: i32) -> RcNode {
+        let data = self.common_data_mut();
+        // We always register final values because while ADDING we do not know yet whether we will
+        // build fast or small.
+        data.lookup_final_value_node.set_final_value(value);
+        let old_node = data.nodes.get(&data.lookup_final_value_node);
+        if let Some(old_node) = old_node {
+            return old_node.clone();
         }
+
+        let new_node: RcNode = FinalValueNode::new(value).into();
+        // If `insert()` indicates that there was an equivalent, previously registered node, then
+        // `get()` failed to find that and we will leak `new_node`.
+        let was_absent = data.nodes.insert(new_node.clone());
+        assert!(was_absent);
+
+        new_node
+    }
+}
+
+impl BytesTrieBuilder {
+
+    pub fn build_fast(self) -> Vec<u8> {
+        self.build_impl(BuildMode::Fast)
+    }
+
+    pub fn build_small(self) -> Vec<u8> {
+        self.build_impl(BuildMode::Small)
+    }
+
+    fn build_impl(self, build_mode: BuildMode) -> Vec<u8> {
+        todo!()
+    }
+
+    pub(crate) fn add_impl(&mut self, s: &[u16], value: i32) -> Result<(), BytesTrieBuilderError> {
         if s.len() > MAX_KEY_LENGTH {
             return Err(BytesTrieBuilderError::KeyTooLong);
         }
 
-        if self.root.is_none() {
-            self.root = Some(self.create_suffix_node(s, 0, value).into());
+        let data = self.common_data();
+        if data.root.is_none() {
+            data.root = Some(self.create_suffix_node(s, value).into());
         } else {
-            self.root = Some(self.root.take().unwrap().add(self, s, 0, value)?);
+            data.root = Some(data.root.take().unwrap().add(self, s, 0, value)?);
         }
 
         Ok(())
@@ -54,13 +99,13 @@ impl BytesTrieBuilder {
 
     // pub(crate) build_impl(&mut self)
 
-    pub(crate) fn create_suffix_node(&mut self, s: &[u16], start: usize, value: i32) -> ValueNode {
+    pub(crate) fn create_suffix_node(&mut self, s: &[u16], value: i32) -> ValueNode {
+        let data = self.common_data();
         let node = self.register_final_value(value);
-        let strings_len = self.strings.borrow().len();
-        if start < strings_len {
-            let offset = strings_len;
-            self.strings.borrow_mut().extend_from_slice(&s[start..]);
-            LinearMatchNode::new(builder_strings.clone(), offset, s.len(), next_node)
+        if !s.is_empty() {
+            let offset = data.strings.borrow().len();
+            data.strings.borrow_mut().extend_from_slice(s);
+            LinearMatchNode::new(data.strings.clone(), offset, s.len(), next_node).into()
         }
         node
     }
@@ -89,10 +134,6 @@ impl BytesTrieBuilder {
         todo!()
     }
 
-    pub(crate) fn register_node(&mut self, node: RcNode) -> RcNode {
-        todo!()
-    }
-
     pub(crate) fn match_nodes_can_have_values(&self) -> bool {
         todo!()
     }
@@ -106,8 +147,61 @@ impl BytesTrieBuilder {
     }
 }
 
-/// Build options for `BytesTrieBuilder`.
 #[derive(Debug)]
+pub(crate) struct BytesTrieNodeTree {
+    common_data: CommonData,
+    build_mode: BuildMode,
+}
+
+impl BytesTrieNodeTree {
+
+    fn from_builder(builder: BytesTrieBuilder, build_mode: BuildMode) -> Result<Self, BytesTrieBuilderError> {
+        let tree = BytesTrieNodeTree {
+            common_data: builder.common_data,
+            build_mode,
+        };
+
+        tree.common_data.root.register(&mut tree);
+    }
+
+    fn register_node(&mut self, new_node: RcNode) -> RcNode {
+        if self.build_mode == BuildMode::Fast {
+            return new_node;
+        }
+        // BuildMode::Small
+
+        let old_node = self.common_data.nodes.get(&new_node);
+        if Some(old_node) = old_node {
+            old_node.clone()
+        } else {
+            let was_absent = self.common_data.nodes.insert(new_node.clone());
+            assert!(was_absent);
+            new_node
+        }
+
+    }
+}
+
+impl BytesTrieBuilderCommon for BytesTrieBuilder {
+    fn common_data(&self) -> &CommonData {
+        &self.common_data
+    }
+
+    fn common_data_mut(&mut self) -> &mut CommonData {
+        &mut self.common_data
+    }
+}
+
+impl TryFrom<BytesTrieBuilder> for BytesTrieNodeTree {
+    type Error = BytesTrieBuilderError;
+
+    fn try_from(builder: BytesTrieBuilder) -> Result<Self, Self::Error> {
+        let target = By
+    }
+}
+
+/// Build options for `BytesTrieBuilder`.
+#[derive(Debug, Eq, PartialEq)]
 pub enum BuildMode {
     /// Builds a trie quickly.
     Fast,

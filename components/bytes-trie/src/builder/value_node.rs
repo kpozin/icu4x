@@ -69,14 +69,13 @@ pub(crate) trait ValueNodeTrait: NodeTrait {
         self_: &RcNode,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
-        start: i32,
         value: i32,
     ) -> Result<RcNode, BytesTrieBuilderError> {
-        if start == s.len() as i32 {
+        if s.is_empty() {
             return Err(BytesTrieBuilderError::DuplicateString);
         }
         // Replace self with a node for the remaining string suffix and value.
-        let mut node = builder.create_suffix_node(s, start, value);
+        let mut node = builder.create_suffix_node(s, value);
         node.set_value(value);
         Ok(node.into())
     }

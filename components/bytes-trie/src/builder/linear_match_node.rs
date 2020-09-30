@@ -28,11 +28,10 @@ impl NodeTrait for LinearMatchNode {
         self_: &RcNode,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
-        start: i32,
         value: i32,
     ) -> Result<RcNode, BytesTrieBuilderError> {
         let mut linear_match_node = self_.as_linear_match();
-        if start == s.len() as i32 {
+        if s.is_empty() {
             if linear_match_node.has_value() {
                 return Err(BytesTrieBuilderError::DuplicateString);
             } else {
@@ -41,7 +40,7 @@ impl NodeTrait for LinearMatchNode {
             }
         }
         let limit = linear_match_node.string_offset as usize + linear_match_node.length as usize;
-        let mut start = start as usize;
+        let mut start = 0;
         for mut i in (linear_match_node.string_offset as usize)..limit {
             if start == s.len() {
                 // s is a prefix with a new value. Split self into two linear-match nodes.
@@ -104,7 +103,7 @@ impl NodeTrait for LinearMatchNode {
                         linear_match_node.next = branch_node.clone();
                         (self_.clone(), this_suffix_node, branch_node)
                     };
-                let new_suffix_node = builder.create_suffix_node(s, (start + 1) as i32, value);
+                let new_suffix_node = builder.create_suffix_node(&s[(start + 1)..], value);
 
                 branch_node
                     .as_dynamic_branch()

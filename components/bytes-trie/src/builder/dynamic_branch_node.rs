@@ -26,11 +26,10 @@ impl NodeTrait for DynamicBranchNode {
         self_: &RcNode,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
-        start: i32,
         value: i32,
     ) -> Result<RcNode, BytesTrieBuilderError> {
         let mut dynamic_branch_node = self_.as_dynamic_branch();
-        if start == s.len() as i32 {
+        if s.is_empty() {
             if dynamic_branch_node.has_value() {
                 return Err(BytesTrieBuilderError::DuplicateString);
             } else {
@@ -38,16 +37,16 @@ impl NodeTrait for DynamicBranchNode {
                 return Ok(self_.clone());
             }
         }
-        let c = s[start as usize];
+        let c = s[0];
         let i = dynamic_branch_node.find(c);
         if i < dynamic_branch_node.chars.len() && c == dynamic_branch_node.chars[i] {
-            let replacement = dynamic_branch_node.equal[i].add(builder, s, start, value)?;
+            let replacement = dynamic_branch_node.equal[i].add(builder, s, value)?;
             dynamic_branch_node.equal[i] = replacement;
         } else {
             dynamic_branch_node.chars.insert(i, c);
             dynamic_branch_node
                 .equal
-                .insert(i, builder.create_suffix_node(s, start, value).into())
+                .insert(i, builder.create_suffix_node(s, value).into())
         }
         Ok(self_.clone())
     }

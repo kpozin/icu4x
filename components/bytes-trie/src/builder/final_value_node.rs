@@ -16,13 +16,21 @@ impl NodeTrait for FinalValueNode {
         self_: &RcNode,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
-        start: i32,
         value: i32,
     ) -> Result<RcNode, BytesTrieBuilderError> {
-        <FinalValueNode as ValueNodeTrait>::add(self_, builder, s, start, value)
+        <FinalValueNode as ValueNodeTrait>::add(self_, builder, s, value)
     }
 
     fn write(&mut self, builder: &mut super::builder::BytesTrieBuilder) {
         ValueNodeTrait::write(self, builder);
+    }
+}
+
+impl FinalValueNode {
+    pub fn new(value: i32) -> FinalValueNode {
+        FinalValueNode {
+            offset: 0,
+            value: Some(value),
+        }
     }
 }

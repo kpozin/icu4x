@@ -1,6 +1,6 @@
 use {
     super::{
-        branch_head_node::BranchHeadNode, builder::BytesTrieBuilder,
+        branch_head_node::BranchHeadNode, builder::{BytesTrieBuilder, BytesTrieNodeTree},
         dynamic_branch_node::DynamicBranchNode, errors::BytesTrieBuilderError,
         final_value_node::FinalValueNode, intermediate_value_node::IntermediateValueNode,
         linear_match_node::LinearMatchNode, list_branch_node::ListBranchNode,
@@ -103,7 +103,6 @@ pub(crate) trait NodeTrait: WithOffset + Debug + Eq + PartialEq + 'static {
         self_: &RcNode,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
-        start: i32,
         value: i32,
     ) -> Result<RcNode, BytesTrieBuilderError> {
         Ok(self_.clone())
@@ -116,7 +115,7 @@ pub(crate) trait NodeTrait: WithOffset + Debug + Eq + PartialEq + 'static {
     ///
     /// Returns the registered version of this node which implements `write()`, or `None` if self
     /// is the instance registered.
-    fn register(self_: &RcNode, builder: &mut BytesTrieBuilder) -> RcNode {
+    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
         self_.clone()
     }
 
@@ -175,17 +174,17 @@ pub(crate) trait NodeTrait: WithOffset + Debug + Eq + PartialEq + 'static {
 }
 
 impl NodeTrait for Node {
-    fn register(self_: &RcNode, builder: &mut BytesTrieBuilder) -> RcNode {
+    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
         match *self_.borrow() {
-            Node::FinalValue(_) => <FinalValueNode as NodeTrait>::register(self_, builder),
-            Node::BranchHead(_) => <BranchHeadNode as NodeTrait>::register(self_, builder),
-            Node::DynamicBranch(_) => <DynamicBranchNode as NodeTrait>::register(self_, builder),
+            Node::FinalValue(_) => <FinalValueNode as NodeTrait>::register(self_, tree),
+            Node::BranchHead(_) => <BranchHeadNode as NodeTrait>::register(self_, tree),
+            Node::DynamicBranch(_) => <DynamicBranchNode as NodeTrait>::register(self_, tree),
             Node::IntermediateValue(_) => {
-                <IntermediateValueNode as NodeTrait>::register(self_, builder)
+                <IntermediateValueNode as NodeTrait>::register(self_, tree)
             }
-            Node::LinearMatch(_) => <LinearMatchNode as NodeTrait>::register(self_, builder),
-            Node::ListBranch(_) => <ListBranchNode as NodeTrait>::register(self_, builder),
-            Node::SplitBranch(_) => <SplitBranchNode as NodeTrait>::register(self_, builder),
+            Node::LinearMatch(_) => <LinearMatchNode as NodeTrait>::register(self_, tree),
+            Node::ListBranch(_) => <ListBranchNode as NodeTrait>::register(self_, tree),
+            Node::SplitBranch(_) => <SplitBranchNode as NodeTrait>::register(self_, tree),
         }
     }
 
@@ -207,11 +206,10 @@ pub(crate) trait RcNodeTrait {
         &self,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
-        start: i32,
         value: i32,
     ) -> Result<RcNode, BytesTrieBuilderError>;
 
-    fn register(&self, builder: &mut BytesTrieBuilder) -> RcNode;
+    fn register(&self, tree: &mut BytesTrieNodeTree) -> RcNode;
 }
 
 impl RcNodeTrait for RcNode {
@@ -219,14 +217,13 @@ impl RcNodeTrait for RcNode {
         &self,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
-        start: i32,
         value: i32,
     ) -> Result<RcNode, BytesTrieBuilderError> {
-        <Node as NodeTrait>::add(self, builder, s, start, value)
+        <Node as NodeTrait>::add(self, builder, s, value)
     }
 
-    fn register(&self, builder: &mut BytesTrieBuilder) -> RcNode {
-        <Node as NodeTrait>::register(self, builder)
+    fn register(&self, tree: &mut BytesTrieNodeTree) -> RcNode {
+        <Node as NodeTrait>::register(self, tree)
     }
 }
 
