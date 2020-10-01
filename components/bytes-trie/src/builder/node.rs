@@ -1,9 +1,13 @@
 use {
     super::{
-        branch_head_node::BranchHeadNode, builder::{BytesTrieBuilder, BytesTrieNodeTree},
-        dynamic_branch_node::DynamicBranchNode, errors::BytesTrieBuilderError,
-        final_value_node::FinalValueNode, intermediate_value_node::IntermediateValueNode,
-        linear_match_node::LinearMatchNode, list_branch_node::ListBranchNode,
+        branch_head_node::BranchHeadNode,
+        builder::{BytesTrieBuilder, BytesTrieNodeTree},
+        dynamic_branch_node::DynamicBranchNode,
+        errors::BytesTrieBuilderError,
+        final_value_node::FinalValueNode,
+        intermediate_value_node::IntermediateValueNode,
+        linear_match_node::LinearMatchNode,
+        list_branch_node::ListBranchNode,
         split_branch_node::SplitBranchNode,
     },
     paste::paste,

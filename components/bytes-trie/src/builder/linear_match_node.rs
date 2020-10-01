@@ -1,6 +1,6 @@
 use {
     super::{
-        builder::BytesTrieBuilder,
+        builder::{BytesTrieBuilder, BytesTrieNodeTree},
         dynamic_branch_node::DynamicBranchNode,
         errors::BytesTrieBuilderError,
         intermediate_value_node::IntermediateValueNode,
@@ -122,12 +122,12 @@ impl NodeTrait for LinearMatchNode {
         Ok(self_.clone())
     }
 
-    fn register(self_: &RcNode, builder: &mut BytesTrieBuilder) -> RcNode {
+    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
         let mut linear_match_node = self_.as_linear_match();
-        linear_match_node.next = linear_match_node.next.register(builder);
+        linear_match_node.next = linear_match_node.next.register(tree);
 
         // Break the linear-match sequence into chunks of at most kMaxLinearMatchLength.
-        let max_linear_match_length = builder.max_linear_match_length();
+        let max_linear_match_length = tree.max_linear_match_length();
         while linear_match_node.length > max_linear_match_length {
             let next_offset = linear_match_node.string_offset + linear_match_node.length
                 - max_linear_match_length;
@@ -138,17 +138,16 @@ impl NodeTrait for LinearMatchNode {
                 max_linear_match_length,
                 linear_match_node.next.clone(),
             );
-            linear_match_node.next = builder.register_node(suffix_node.into());
+            linear_match_node.next = tree.register_node(suffix_node.into());
         }
-        let result = if linear_match_node.has_value() && !builder.match_nodes_can_have_values() {
+        let result = if linear_match_node.has_value() && !tree.match_nodes_can_have_values() {
             let intermediate_value = linear_match_node.value().unwrap();
             linear_match_node.clear_value();
-            IntermediateValueNode::new(intermediate_value, builder.register_node(self_.clone()))
-                .into()
+            IntermediateValueNode::new(intermediate_value, tree.register_node(self_.clone())).into()
         } else {
             self_.clone()
         };
-        builder.register_node(result)
+        tree.register_node(result)
     }
 
     fn write(&mut self, builder: &mut super::builder::BytesTrieBuilder) {

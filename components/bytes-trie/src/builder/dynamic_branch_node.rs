@@ -1,7 +1,7 @@
 use {
     super::{
         branch_head_node::BranchHeadNode,
-        builder::BytesTrieBuilder,
+        builder::{BytesTrieBuilder, BytesTrieNodeTree},
         errors::BytesTrieBuilderError,
         intermediate_value_node::IntermediateValueNode,
         list_branch_node::ListBranchNode,
@@ -51,23 +51,22 @@ impl NodeTrait for DynamicBranchNode {
         Ok(self_.clone())
     }
 
-    fn register(self_: &RcNode, builder: &mut BytesTrieBuilder) -> RcNode {
+    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
         let mut dynamic_branch_node = self_.as_dynamic_branch();
-        let sub_node =
-            self_.register_with_limits(builder, 0, dynamic_branch_node.chars.len() as i32);
+        let sub_node = self_.register_with_limits(tree, 0, dynamic_branch_node.chars.len() as i32);
         let mut head = BranchHeadNode::new(dynamic_branch_node.chars.len() as i32, sub_node);
         let result: RcNode = if dynamic_branch_node.has_value() {
             let value = dynamic_branch_node.value().unwrap();
-            if builder.match_nodes_can_have_values() {
+            if tree.match_nodes_can_have_values() {
                 head.set_value(value);
                 head.into()
             } else {
-                IntermediateValueNode::new(value, builder.register_node(head.into())).into()
+                IntermediateValueNode::new(value, tree.register_node(head.into())).into()
             }
         } else {
             head.into()
         };
-        builder.register_node(result)
+        tree.register_node(result)
     }
 
     fn write(&mut self, builder: &mut BytesTrieBuilder) {
@@ -113,34 +112,24 @@ impl DynamicBranchNode {
 }
 
 trait DynamicBranchNodeExt {
-    fn register_with_limits(
-        &self,
-        builder: &mut BytesTrieBuilder,
-        start: i32,
-        limit: i32,
-    ) -> RcNode;
+    fn register_with_limits(&self, tree: &mut BytesTrieNodeTree, start: i32, limit: i32) -> RcNode;
 }
 
 impl DynamicBranchNodeExt for RcNode {
-    fn register_with_limits(
-        &self,
-        builder: &mut BytesTrieBuilder,
-        start: i32,
-        limit: i32,
-    ) -> RcNode {
+    fn register_with_limits(&self, tree: &mut BytesTrieNodeTree, start: i32, limit: i32) -> RcNode {
         let mut dynamic_branch_node = self.as_dynamic_branch();
         let length = limit - start;
-        if length > builder.max_branch_linear_sub_node_length() {
+        if length > tree.max_branch_linear_sub_node_length() {
             // Branch on the middle unit.
             let middle = start + (length / 2);
-            let less_than = self.register_with_limits(builder, start, limit);
-            let greater_or_equal = self.register_with_limits(builder, middle, limit);
+            let less_than = self.register_with_limits(tree, start, limit);
+            let greater_or_equal = self.register_with_limits(tree, middle, limit);
             let split_branch_node = SplitBranchNode::new(
                 dynamic_branch_node.chars[middle as usize],
                 less_than,
                 greater_or_equal,
             );
-            return builder.register_node(split_branch_node.into());
+            return tree.register_node(split_branch_node.into());
         }
         let mut list_branch_node = ListBranchNode::new(length as usize);
         let mut start = start as usize;
@@ -157,6 +146,6 @@ impl DynamicBranchNodeExt for RcNode {
                 break;
             }
         }
-        builder.register_node(list_branch_node.into())
+        tree.register_node(list_branch_node.into())
     }
 }

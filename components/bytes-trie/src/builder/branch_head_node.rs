@@ -1,6 +1,6 @@
 use {
     super::{
-        builder::BytesTrieBuilder,
+        builder::{BytesTrieBuilder, BytesTrieNodeTree},
         node::{Node, NodeTrait, RcNode, WithOffset},
         value_node::{ValueNode, ValueNodeTrait},
     },
@@ -16,10 +16,6 @@ pub(crate) struct BranchHeadNode {
 }
 
 impl NodeTrait for BranchHeadNode {
-    fn register(self_: &RcNode, builder: &mut BytesTrieBuilder) -> RcNode {
-        unimplemented!()
-    }
-
     fn mark_right_edges_first(&mut self, mut edge_number: i32) -> i32 {
         if self.offset() == 0 {
             edge_number = self.next.borrow_mut().mark_right_edges_first(edge_number);

@@ -1,7 +1,7 @@
 use {
     super::{
         branch_head_node::BranchHeadNode,
-        builder::BytesTrieBuilder,
+        builder::{BytesTrieBuilder, BytesTrieNodeTree},
         dynamic_branch_node::DynamicBranchNode,
         errors::BytesTrieBuilderError,
         final_value_node::FinalValueNode,
@@ -38,8 +38,8 @@ impl WithOffset for ValueNode {
 }
 
 impl NodeTrait for ValueNode {
-    fn register(self_: &RcNode, builder: &mut BytesTrieBuilder) -> RcNode {
-        <Node as NodeTrait>::register(self_, builder)
+    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
+        <Node as NodeTrait>::register(self_, tree)
     }
 
     fn write(&mut self, builder: &mut BytesTrieBuilder) {
@@ -57,12 +57,16 @@ pub(crate) trait ValueNodeTrait: NodeTrait {
     // TODO: constructors
 
     fn value(&self) -> Option<i32>;
-    fn set_value(&mut self, value: i32) -> Option<i32>;
+    /// Will panic if the node already has a value.
+    fn set_value(&mut self, value: i32);
+    /// Same as `set_value`, but does not panic if the node already has a value.
+    ///
+    /// Returns the previous value, if any.
+    fn set_final_value(&mut self, value: i32) -> Option<i32>;
     fn has_value(&self) -> bool {
         self.value().is_some()
     }
     fn clear_value(&mut self);
-    // TODO: set_final_value??
 
     // Used in FinalValueNode, BranchHeadNode, IntermediateValueNode,
     fn add(
@@ -98,13 +102,23 @@ impl ValueNodeTrait for ValueNode {
         }
     }
 
-    fn set_value(&mut self, value: i32) -> Option<i32> {
+    fn set_value(&mut self, value: i32) {
         match self {
             ValueNode::FinalValue(n) => n.set_value(value),
             ValueNode::BranchHead(n) => n.set_value(value),
             ValueNode::DynamicBranch(n) => n.set_value(value),
             ValueNode::IntermediateValue(n) => n.set_value(value),
             ValueNode::LinearMatch(n) => n.set_value(value),
+        }
+    }
+
+    fn set_final_value(&mut self, value: i32) -> Option<i32> {
+        match self {
+            ValueNode::FinalValue(n) => n.set_final_value(value),
+            ValueNode::BranchHead(n) => n.set_final_value(value),
+            ValueNode::DynamicBranch(n) => n.set_final_value(value),
+            ValueNode::IntermediateValue(n) => n.set_final_value(value),
+            ValueNode::LinearMatch(n) => n.set_final_value(value),
         }
     }
 
@@ -145,8 +159,12 @@ macro_rules! impl_value_node_trait {
                 self.value
             }
 
-            fn set_value(&mut self, value: i32) -> Option<i32> {
+            fn set_value(&mut self, value: i32) {
                 assert!(!self.has_value());
+                self.value.replace(value);
+            }
+
+            fn set_final_value(&mut self, value: i32) -> Option<i32> {
                 self.value.replace(value)
             }
 

@@ -5,8 +5,8 @@ use {
         errors::BytesTrieBuilderError,
         final_value_node::FinalValueNode,
         linear_match_node::LinearMatchNode,
-        node::{Node, RcNode, RcNodeTrait, NodeTrait},
-        value_node::ValueNode,
+        node::{Node, NodeTrait, RcNode, RcNodeTrait},
+        value_node::{ValueNode, ValueNodeTrait},
     },
     std::{cell::RefCell, collections::HashSet, rc::Rc},
 };
@@ -35,8 +35,6 @@ struct CommonData {
     lookup_final_value_node: RcNode,
 }
 
-
-
 /// Initial state of `BytesTrieBuilder`.
 #[derive(Debug)]
 pub struct BytesTrieBuilder {
@@ -52,7 +50,14 @@ trait BytesTrieBuilderCommon {
         let data = self.common_data_mut();
         // We always register final values because while ADDING we do not know yet whether we will
         // build fast or small.
-        data.lookup_final_value_node.set_final_value(value);
+        match &mut *data.lookup_final_value_node.borrow_mut() {
+            Node::FinalValue(node) => {
+                node.set_final_value(value);
+            }
+            _ => {
+                panic!("Unexpected node type: {:?}", data.lookup_final_value_node);
+            }
+        };
         let old_node = data.nodes.get(&data.lookup_final_value_node);
         if let Some(old_node) = old_node {
             return old_node.clone();
@@ -69,17 +74,16 @@ trait BytesTrieBuilderCommon {
 }
 
 impl BytesTrieBuilder {
-
-    pub fn build_fast(self) -> Vec<u8> {
+    pub fn build_fast(self) -> Result<Vec<u8>, BytesTrieBuilderError> {
         self.build_impl(BuildMode::Fast)
     }
 
-    pub fn build_small(self) -> Vec<u8> {
+    pub fn build_small(self) -> Result<Vec<u8>, BytesTrieBuilderError> {
         self.build_impl(BuildMode::Small)
     }
 
-    fn build_impl(self, build_mode: BuildMode) -> Vec<u8> {
-        todo!()
+    fn build_impl(self, build_mode: BuildMode) -> Result<Vec<u8>, BytesTrieBuilderError> {
+        let tree = BytesTrieNodeTree::from_builder(self, build_mode)?;
     }
 
     pub(crate) fn add_impl(&mut self, s: &[u16], value: i32) -> Result<(), BytesTrieBuilderError> {
@@ -154,17 +158,21 @@ pub(crate) struct BytesTrieNodeTree {
 }
 
 impl BytesTrieNodeTree {
+    fn from_builder(
+        builder: BytesTrieBuilder,
+        build_mode: BuildMode,
+    ) -> Result<Self, BytesTrieBuilderError> {
+        let BytesTrieBuilder { common_data } = builder;
 
-    fn from_builder(builder: BytesTrieBuilder, build_mode: BuildMode) -> Result<Self, BytesTrieBuilderError> {
         let tree = BytesTrieNodeTree {
-            common_data: builder.common_data,
+            common_data,
             build_mode,
         };
 
         tree.common_data.root.register(&mut tree);
     }
 
-    fn register_node(&mut self, new_node: RcNode) -> RcNode {
+    pub(crate) fn register_node(&mut self, new_node: RcNode) -> RcNode {
         if self.build_mode == BuildMode::Fast {
             return new_node;
         }
@@ -178,7 +186,6 @@ impl BytesTrieNodeTree {
             assert!(was_absent);
             new_node
         }
-
     }
 }
 
@@ -189,14 +196,6 @@ impl BytesTrieBuilderCommon for BytesTrieBuilder {
 
     fn common_data_mut(&mut self) -> &mut CommonData {
         &mut self.common_data
-    }
-}
-
-impl TryFrom<BytesTrieBuilder> for BytesTrieNodeTree {
-    type Error = BytesTrieBuilderError;
-
-    fn try_from(builder: BytesTrieBuilder) -> Result<Self, Self::Error> {
-        let target = By
     }
 }
 
