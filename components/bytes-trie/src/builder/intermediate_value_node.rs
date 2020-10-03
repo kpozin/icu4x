@@ -1,7 +1,7 @@
 use {
     super::{
         builder::{BytesTrieBuilder, BytesTrieNodeTree},
-        node::{Node, NodeTrait, RcNode, WithOffset},
+        node::{NodeInternal, NodeTrait, Node, WithOffset},
         value_node::{ValueNode, ValueNodeTrait},
     },
     std::rc::Rc,
@@ -10,14 +10,13 @@ use {
 #[derive(Debug, Eq, PartialEq)]
 
 pub(crate) struct IntermediateValueNode {
-    pub(crate) offset: i32,
     pub(crate) value: Option<i32>,
-    next: RcNode,
+    next: Node,
 }
 
 impl NodeTrait for IntermediateValueNode {
-    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
-        <Node as NodeTrait>::register(self_, tree)
+    fn register(self_: &Node, tree: &mut BytesTrieNodeTree) -> Node {
+        <NodeInternal as NodeTrait>::register(self_, tree)
     }
 
     fn mark_right_edges_first(&mut self, edge_number: i32) -> i32 {
@@ -37,7 +36,7 @@ impl NodeTrait for IntermediateValueNode {
 }
 
 impl IntermediateValueNode {
-    pub fn new(value: i32, next_node: RcNode) -> Self {
+    pub fn new(value: i32, next_node: Node) -> Self {
         IntermediateValueNode {
             offset: 0,
             value: Some(value),

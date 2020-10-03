@@ -4,7 +4,7 @@ use {
         dynamic_branch_node::DynamicBranchNode,
         errors::BytesTrieBuilderError,
         intermediate_value_node::IntermediateValueNode,
-        node::{AsDynamicBranch, AsLinearMatch, Node, NodeTrait, RcNode, RcNodeTrait, WithOffset},
+        node::{AsDynamicBranch, AsLinearMatch, NodeInternal, NodeTrait, Node, RcNodeTrait, WithOffset},
         value_node::ValueNodeTrait,
     },
     std::{
@@ -15,21 +15,20 @@ use {
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct LinearMatchNode {
-    pub(crate) offset: i32,
     pub(crate) value: Option<i32>,
     length: i32,
-    next: RcNode,
+    next: Node,
     string_offset: i32,
     strings: Rc<RefCell<Vec<u16>>>,
 }
 
 impl NodeTrait for LinearMatchNode {
     fn add(
-        self_: &RcNode,
+        self_: &Node,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
         value: i32,
-    ) -> Result<RcNode, BytesTrieBuilderError> {
+    ) -> Result<Node, BytesTrieBuilderError> {
         let mut linear_match_node = self_.as_linear_match();
         if s.is_empty() {
             if linear_match_node.has_value() {
@@ -63,7 +62,7 @@ impl NodeTrait for LinearMatchNode {
                 // Mismatch, insert a branch node.
                 let mut branch_node = DynamicBranchNode::new();
 
-                let (result, this_suffix_node, branch_node): (RcNode, RcNode, RcNode) =
+                let (result, this_suffix_node, branch_node): (Node, Node, Node) =
                     if i == linear_match_node.string_offset as usize {
                         if linear_match_node.has_value() {
                             // Move the value for prefix length "start" to the new node.
@@ -77,13 +76,13 @@ impl NodeTrait for LinearMatchNode {
                         } else {
                             linear_match_node.next.clone()
                         };
-                        let branch_node: RcNode = branch_node.into();
+                        let branch_node: Node = branch_node.into();
                         (branch_node.clone(), this_suffix_node, branch_node)
                     } else if i == limit - 1 {
                         // Mismatch on last character, keep this node for the prefix.
                         linear_match_node.length -= 1;
                         let this_suffix_node = linear_match_node.next.clone();
-                        let branch_node: RcNode = branch_node.into();
+                        let branch_node: Node = branch_node.into();
                         linear_match_node.next = branch_node.clone();
                         (self_.clone(), this_suffix_node, branch_node)
                     } else {
@@ -99,7 +98,7 @@ impl NodeTrait for LinearMatchNode {
                         )
                         .into();
                         linear_match_node.length = prefix_length as i32;
-                        let branch_node: RcNode = branch_node.into();
+                        let branch_node: Node = branch_node.into();
                         linear_match_node.next = branch_node.clone();
                         (self_.clone(), this_suffix_node, branch_node)
                     };
@@ -122,7 +121,7 @@ impl NodeTrait for LinearMatchNode {
         Ok(self_.clone())
     }
 
-    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
+    fn register(self_: &Node, tree: &mut BytesTrieNodeTree) -> Node {
         let mut linear_match_node = self_.as_linear_match();
         linear_match_node.next = linear_match_node.next.register(tree);
 
@@ -163,7 +162,7 @@ impl LinearMatchNode {
         builder_strings: Rc<RefCell<Vec<u16>>>,
         offset: i32,
         length: i32,
-        next_node: RcNode,
+        next_node: Node,
     ) -> Self {
         LinearMatchNode {
             offset: 0,

@@ -5,7 +5,7 @@ use {
         errors::BytesTrieBuilderError,
         final_value_node::FinalValueNode,
         linear_match_node::LinearMatchNode,
-        node::{Node, NodeTrait, RcNode, RcNodeTrait},
+        node::{NodeInternal, NodeTrait, Node, RcNodeTrait},
         value_node::{ValueNode, ValueNodeTrait},
     },
     std::{cell::RefCell, collections::HashSet, rc::Rc},
@@ -27,12 +27,12 @@ struct CommonData {
     /// Strings and sub-strings for linear-match nodes.
     strings: Rc<RefCell<Vec<u16>>>,
 
-    root: Option<RcNode>,
+    root: Option<Node>,
 
     /// Hash set of nodes, maps from nodes to integer 1.
-    nodes: HashSet<RcNode>,
+    nodes: HashSet<Node>,
 
-    lookup_final_value_node: RcNode,
+    lookup_final_value_node: Node,
 }
 
 /// Initial state of `BytesTrieBuilder`.
@@ -46,12 +46,12 @@ trait BytesTrieBuilderCommon {
 
     fn common_data_mut(&mut self) -> &mut CommonData;
 
-    fn register_final_value(&mut self, value: i32) -> RcNode {
+    fn register_final_value(&mut self, value: i32) -> Node {
         let data = self.common_data_mut();
         // We always register final values because while ADDING we do not know yet whether we will
         // build fast or small.
         match &mut *data.lookup_final_value_node.borrow_mut() {
-            Node::FinalValue(node) => {
+            NodeInternal::FinalValue(node) => {
                 node.set_final_value(value);
             }
             _ => {
@@ -63,7 +63,7 @@ trait BytesTrieBuilderCommon {
             return old_node.clone();
         }
 
-        let new_node: RcNode = FinalValueNode::new(value).into();
+        let new_node: Node = FinalValueNode::new(value).into();
         // If `insert()` indicates that there was an equivalent, previously registered node, then
         // `get()` failed to find that and we will leak `new_node`.
         let was_absent = data.nodes.insert(new_node.clone());
@@ -172,7 +172,7 @@ impl BytesTrieNodeTree {
         tree.common_data.root.register(&mut tree);
     }
 
-    pub(crate) fn register_node(&mut self, new_node: RcNode) -> RcNode {
+    pub(crate) fn register_node(&mut self, new_node: Node) -> Node {
         if self.build_mode == BuildMode::Fast {
             return new_node;
         }
@@ -197,6 +197,11 @@ impl BytesTrieBuilderCommon for BytesTrieBuilder {
     fn common_data_mut(&mut self) -> &mut CommonData {
         &mut self.common_data
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct BytesTrieWriter {
+
 }
 
 /// Build options for `BytesTrieBuilder`.

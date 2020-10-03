@@ -1,7 +1,7 @@
 use {
     super::{
         builder::BytesTrieBuilder,
-        node::{Node, NodeTrait, RcNode, RcNodeTrait, WithOffset},
+        node::{NodeInternal, NodeTrait, Node, RcNodeTrait, WithOffset},
         value_node::ValueNodeTrait,
     },
     std::rc::Rc,
@@ -9,9 +9,8 @@ use {
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct ListBranchNode {
-    pub(crate) offset: i32,
     first_edge_number: i32,
-    equal: Vec<Option<RcNode>>, // `None` means "has final value"
+    equal: Vec<Option<Node>>, // `None` means "has final value"
     length: usize,
     values: Vec<i32>,
     units: Vec<u16>,
@@ -113,7 +112,7 @@ impl ListBranchNode {
     }
 
     /// Adds a unit which leads to another match node.
-    pub fn add_with_match_node(&mut self, c: u16, node: RcNode) {
+    pub fn add_with_match_node(&mut self, c: u16, node: Node) {
         self.units[self.length] = c;
         self.equal[self.length] = Some(node);
         self.values[self.length] = 0;

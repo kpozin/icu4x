@@ -1,23 +1,22 @@
 use super::{
     builder::BytesTrieBuilder,
     errors::BytesTrieBuilderError,
-    node::{Node, NodeTrait, RcNode},
+    node::{NodeInternal, NodeTrait, Node},
     value_node::ValueNodeTrait,
 };
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct FinalValueNode {
-    pub(crate) offset: i32,
     pub(crate) value: Option<i32>,
 }
 
 impl NodeTrait for FinalValueNode {
     fn add(
-        self_: &RcNode,
+        self_: &Node,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
         value: i32,
-    ) -> Result<RcNode, BytesTrieBuilderError> {
+    ) -> Result<Node, BytesTrieBuilderError> {
         <FinalValueNode as ValueNodeTrait>::add(self_, builder, s, value)
     }
 

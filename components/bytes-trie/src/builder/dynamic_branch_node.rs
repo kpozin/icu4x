@@ -5,7 +5,7 @@ use {
         errors::BytesTrieBuilderError,
         intermediate_value_node::IntermediateValueNode,
         list_branch_node::ListBranchNode,
-        node::{AsDynamicBranch, Node, NodeTrait, RcNode, RcNodeTrait},
+        node::{AsDynamicBranch, NodeInternal, NodeTrait, Node, RcNodeTrait},
         split_branch_node::SplitBranchNode,
         util::StrExt,
         value_node::ValueNodeTrait,
@@ -15,19 +15,18 @@ use {
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct DynamicBranchNode {
-    pub(crate) offset: i32,
     pub(crate) value: Option<i32>,
     chars: Vec<u16>,
-    equal: Vec<RcNode>, // TODO: Maybe `Weak<Node>`?
+    equal: Vec<Node>, // TODO: Maybe `Weak<Node>`?
 }
 
 impl NodeTrait for DynamicBranchNode {
     fn add(
-        self_: &RcNode,
+        self_: &Node,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
         value: i32,
-    ) -> Result<RcNode, BytesTrieBuilderError> {
+    ) -> Result<Node, BytesTrieBuilderError> {
         let mut dynamic_branch_node = self_.as_dynamic_branch();
         if s.is_empty() {
             if dynamic_branch_node.has_value() {
@@ -51,11 +50,11 @@ impl NodeTrait for DynamicBranchNode {
         Ok(self_.clone())
     }
 
-    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
+    fn register(self_: &Node, tree: &mut BytesTrieNodeTree) -> Node {
         let mut dynamic_branch_node = self_.as_dynamic_branch();
         let sub_node = self_.register_with_limits(tree, 0, dynamic_branch_node.chars.len() as i32);
         let mut head = BranchHeadNode::new(dynamic_branch_node.chars.len() as i32, sub_node);
-        let result: RcNode = if dynamic_branch_node.has_value() {
+        let result: Node = if dynamic_branch_node.has_value() {
             let value = dynamic_branch_node.value().unwrap();
             if tree.match_nodes_can_have_values() {
                 head.set_value(value);
@@ -85,7 +84,7 @@ impl DynamicBranchNode {
     }
 
     // c must not be in chars yet
-    pub(crate) fn add(&mut self, c: u16, node: RcNode) {
+    pub(crate) fn add(&mut self, c: u16, node: Node) {
         let i = self.find(c);
         self.chars.insert(i, c);
         self.equal.insert(i, node);
@@ -112,11 +111,11 @@ impl DynamicBranchNode {
 }
 
 trait DynamicBranchNodeExt {
-    fn register_with_limits(&self, tree: &mut BytesTrieNodeTree, start: i32, limit: i32) -> RcNode;
+    fn register_with_limits(&self, tree: &mut BytesTrieNodeTree, start: i32, limit: i32) -> Node;
 }
 
-impl DynamicBranchNodeExt for RcNode {
-    fn register_with_limits(&self, tree: &mut BytesTrieNodeTree, start: i32, limit: i32) -> RcNode {
+impl DynamicBranchNodeExt for Node {
+    fn register_with_limits(&self, tree: &mut BytesTrieNodeTree, start: i32, limit: i32) -> Node {
         let mut dynamic_branch_node = self.as_dynamic_branch();
         let length = limit - start;
         if length > tree.max_branch_linear_sub_node_length() {
@@ -136,7 +135,7 @@ impl DynamicBranchNodeExt for RcNode {
         loop {
             let c = dynamic_branch_node.chars[start];
             let node = dynamic_branch_node.equal[start].clone();
-            if let Node::FinalValue(final_value_node) = &*node.borrow() {
+            if let NodeInternal::FinalValue(final_value_node) = &*node.borrow() {
                 list_branch_node.add_with_final_value(c, final_value_node.value().unwrap());
             } else {
                 list_branch_node.add_with_match_node(c, node.clone());

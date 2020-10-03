@@ -7,7 +7,7 @@ use {
         final_value_node::FinalValueNode,
         intermediate_value_node::IntermediateValueNode,
         linear_match_node::LinearMatchNode,
-        node::{Node, NodeTrait, RcNode, WithOffset},
+        node::{NodeInternal, NodeTrait, Node, WithOffset},
     },
     std::{cell::RefCell, fmt::Debug, hash::Hash, rc::Rc},
 };
@@ -38,8 +38,8 @@ impl WithOffset for ValueNode {
 }
 
 impl NodeTrait for ValueNode {
-    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
-        <Node as NodeTrait>::register(self_, tree)
+    fn register(self_: &Node, tree: &mut BytesTrieNodeTree) -> Node {
+        <NodeInternal as NodeTrait>::register(self_, tree)
     }
 
     fn write(&mut self, builder: &mut BytesTrieBuilder) {
@@ -70,11 +70,11 @@ pub(crate) trait ValueNodeTrait: NodeTrait {
 
     // Used in FinalValueNode, BranchHeadNode, IntermediateValueNode,
     fn add(
-        self_: &RcNode,
+        self_: &Node,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
         value: i32,
-    ) -> Result<RcNode, BytesTrieBuilderError> {
+    ) -> Result<Node, BytesTrieBuilderError> {
         if s.is_empty() {
             return Err(BytesTrieBuilderError::DuplicateString);
         }
@@ -133,21 +133,21 @@ impl ValueNodeTrait for ValueNode {
     }
 }
 
-impl From<ValueNode> for Node {
+impl From<ValueNode> for NodeInternal {
     fn from(node: ValueNode) -> Self {
         match node {
-            ValueNode::FinalValue(n) => Node::FinalValue(n),
-            ValueNode::BranchHead(n) => Node::BranchHead(n),
-            ValueNode::DynamicBranch(n) => Node::DynamicBranch(n),
-            ValueNode::IntermediateValue(n) => Node::IntermediateValue(n),
-            ValueNode::LinearMatch(n) => Node::LinearMatch(n),
+            ValueNode::FinalValue(n) => NodeInternal::FinalValue(n),
+            ValueNode::BranchHead(n) => NodeInternal::BranchHead(n),
+            ValueNode::DynamicBranch(n) => NodeInternal::DynamicBranch(n),
+            ValueNode::IntermediateValue(n) => NodeInternal::IntermediateValue(n),
+            ValueNode::LinearMatch(n) => NodeInternal::LinearMatch(n),
         }
     }
 }
 
-impl From<ValueNode> for RcNode {
+impl From<ValueNode> for Node {
     fn from(node: ValueNode) -> Self {
-        let node: Node = node.into();
+        let node: NodeInternal = node.into();
         node.into()
     }
 }

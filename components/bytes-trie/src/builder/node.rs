@@ -1,7 +1,7 @@
 use {
     super::{
         branch_head_node::BranchHeadNode,
-        builder::{BytesTrieBuilder, BytesTrieNodeTree},
+        builder::{BytesTrieBuilder, BytesTrieNodeTree, BytesTrieWriter},
         dynamic_branch_node::DynamicBranchNode,
         errors::BytesTrieBuilderError,
         final_value_node::FinalValueNode,
@@ -11,105 +11,37 @@ use {
         split_branch_node::SplitBranchNode,
     },
     paste::paste,
-    std::{cell::RefCell, fmt::Debug, hash::Hash, rc::Rc},
+    std::{
+        cell::{Ref, RefCell, RefMut},
+        fmt::Debug,
+        hash::Hash,
+        rc::Rc,
+    },
 };
 
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) enum Node {
-    FinalValue(FinalValueNode),
-    BranchHead(BranchHeadNode),
-    DynamicBranch(DynamicBranchNode),
-    IntermediateValue(IntermediateValueNode),
-    LinearMatch(LinearMatchNode),
-
-    ListBranch(ListBranchNode),
-    SplitBranch(SplitBranchNode),
-}
-
-pub(crate) type RcNode = Rc<RefCell<Node>>;
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub(crate) struct Node(Rc<RefCell<NodeInternal>>);
 
 impl Node {
-    pub fn is_value_node(&self) -> bool {
-        match self {
-            Node::FinalValue(_)
-            | Node::BranchHead(_)
-            | Node::DynamicBranch(_)
-            | Node::IntermediateValue(_)
-            | Node::LinearMatch(_) => true,
-            _ => false,
-        }
+    pub(crate) fn offset(&self) -> i32 {
+        self.internal().offset()
     }
 
-    pub fn is_branch_node(&self) -> bool {
-        !self.is_value_node()
-    }
-}
-
-pub(crate) trait WithOffset {
-    fn offset(&self) -> i32;
-    fn set_offset(&mut self, offset: i32);
-}
-
-impl WithOffset for Node {
-    fn offset(&self) -> i32 {
-        match self {
-            Node::FinalValue(n) => n.offset(),
-            Node::BranchHead(n) => n.offset(),
-            Node::DynamicBranch(n) => n.offset(),
-            Node::IntermediateValue(n) => n.offset(),
-            Node::LinearMatch(n) => n.offset(),
-            Node::ListBranch(n) => n.offset(),
-            Node::SplitBranch(n) => n.offset(),
-        }
+    pub(crate) fn set_offset(&self, offset: i32) {
+        self.internal_mut().set_offset(offset);
     }
 
-    fn set_offset(&mut self, offset: i32) {
-        match self {
-            Node::FinalValue(n) => n.set_offset(offset),
-            Node::BranchHead(n) => n.set_offset(offset),
-            Node::DynamicBranch(n) => n.set_offset(offset),
-            Node::IntermediateValue(n) => n.set_offset(offset),
-            Node::LinearMatch(n) => n.set_offset(offset),
-            Node::ListBranch(n) => n.set_offset(offset),
-            Node::SplitBranch(n) => n.set_offset(offset),
-        }
-    }
-}
-
-macro_rules! impl_with_offset {
-    ($variant:ident) => {
-        impl WithOffset for $variant {
-            fn offset(&self) -> i32 {
-                self.offset
-            }
-
-            fn set_offset(&mut self, offset: i32) {
-                self.offset = offset;
-            }
-        }
-    };
-}
-
-impl_with_offset!(BranchHeadNode);
-impl_with_offset!(DynamicBranchNode);
-impl_with_offset!(FinalValueNode);
-impl_with_offset!(IntermediateValueNode);
-impl_with_offset!(LinearMatchNode);
-impl_with_offset!(ListBranchNode);
-impl_with_offset!(SplitBranchNode);
-
-pub(crate) trait NodeTrait: WithOffset + Debug + Eq + PartialEq + 'static {
     /// Recursive method for adding a new (string, value) pair. Matches the remaining part of `s`
     /// from `start`, and adds a new node where there is a mismatch.
     ///
     /// Returns `None`, or a replacement `Node`.
     fn add(
-        self_: &RcNode,
+        &self,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
         value: i32,
-    ) -> Result<RcNode, BytesTrieBuilderError> {
-        Ok(self_.clone())
+    ) -> Result<Node, BytesTrieBuilderError> {
+        self.internal_mut().add(self, builder, s, value)
     }
 
     /// Recursive method for registering unique nodes, after all (string, value) pairs have been
@@ -119,8 +51,8 @@ pub(crate) trait NodeTrait: WithOffset + Debug + Eq + PartialEq + 'static {
     ///
     /// Returns the registered version of this node which implements `write()`, or `None` if self
     /// is the instance registered.
-    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
-        self_.clone()
+    fn register(&self, tree: &mut BytesTrieNodeTree) -> Node {
+        self.internal_mut().register(self, tree)
     }
 
     /// Traverses the `Node` graph and numbers branch edges, with rightmost edges first.
@@ -148,6 +80,130 @@ pub(crate) trait NodeTrait: WithOffset + Debug + Eq + PartialEq + 'static {
     ///
     /// Returns an edge number that is at least the maximum-negative of the input edge number and
     /// the numbers of this node and all of its sub-nodes.
+    fn mark_right_edges_first(&self, edge_number: i32) -> i32 {
+        self.internal_mut().mark_right_edges_first(edge_number)
+    }
+
+    /// Must set the offset to a positive value.
+    fn write(&self, writer: &mut BytesTrieWriter) {
+        self.internal_mut().write(writer);
+    }
+
+    /// See `mark_right_edges_first`.
+    pub(crate) fn write_unless_inside_right_edge(
+        &self,
+        first_right: i32,
+        last_right: i32,
+        writer: &mut BytesTrieWriter,
+    ) {
+        // Note: Edge numbers are negative, last_right <= first_right.
+        // If offset > 0 then this node and its sub-nodes have been written already and we need not
+        // write them again.
+        // If this node is part of the unwritten right branch edge, then we wait until that is
+        // written.
+        let offset = self.offset();
+        if offset < 0 && (offset < last_right || first_right < offset) {
+            self.write(writer);
+        }
+    }
+
+    fn internal<'a>(&'a self) -> Ref<'a, NodeInternal> {
+        self.0.borrow()
+    }
+
+    fn internal_mut<'a>(&'a self) -> RefMut<'a, NodeInternal> {
+        self.0.borrow_mut()
+    }
+}
+
+pub(crate) trait NodeTrait<C: NodeContentTrait>: GetContent<C> {
+    fn add(
+        &self,
+        builder: &mut BytesTrieBuilder,
+        s: &[u16],
+        value: i32,
+    ) -> Result<Node, BytesTrieBuilderError>;
+}
+
+pub(crate) trait NodeContentTrait: Debug + Eq + PartialEq + Hash + 'static {
+    fn mark_right_edges_first(&mut self, edge_number: i32) -> i32 {
+        if self.offset() == 0 {
+            self.set_offset(edge_number);
+        }
+        edge_number
+    }
+
+    fn write(&mut self, writer: &mut BytesTrieWriter);
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub(crate) struct NodeInternal {
+    offset: i32,
+    content: NodeContent,
+}
+
+impl NodeInternal {
+    fn offset(&self) -> i32 {
+        self.offset
+    }
+
+    fn set_offset(&mut self, offset: i32) {
+        self.offset = offset;
+    }
+}
+
+impl NodeContentTrait for NodeInternal {
+    fn mark_right_edges_first(&mut self, edge_number: i32) -> i32 {
+        match &mut self.content {
+            NodeContent::FinalValue(n) => n.mark_right_edges_first(edge_number),
+            NodeContent::BranchHead(n) => n.mark_right_edges_first(edge_number),
+            NodeContent::DynamicBranch(n) => n.mark_right_edges_first(edge_number),
+            NodeContent::IntermediateValue(n) => n.mark_right_edges_first(edge_number),
+            NodeContent::LinearMatch(n) => n.mark_right_edges_first(edge_number),
+            NodeContent::ListBranch(n) => n.mark_right_edges_first(edge_number),
+            NodeContent::SplitBranch(n) => n.mark_right_edges_first(edge_number),
+        }
+    }
+
+    fn write(&mut self, writer: &mut BytesTrieWriter) {
+        match &mut self.content {
+            NodeContent::FinalValue(n) => n.write(writer),
+            NodeContent::BranchHead(n) => n.write(writer),
+            NodeContent::DynamicBranch(n) => n.write(writer),
+            NodeContent::IntermediateValue(n) => n.write(writer),
+            NodeContent::LinearMatch(n) => n.write(writer),
+            NodeContent::ListBranch(n) => n.write(writer),
+            NodeContent::SplitBranch(n) => n.write(writer),
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum NodeContent {
+    FinalValue(FinalValueNode),
+    BranchHead(BranchHeadNode),
+    DynamicBranch(DynamicBranchNode),
+    IntermediateValue(IntermediateValueNode),
+    LinearMatch(LinearMatchNode),
+
+    ListBranch(ListBranchNode),
+    SplitBranch(SplitBranchNode),
+}
+
+pub(crate) trait NodeTrait: Debug + Eq + PartialEq {
+    fn add(
+        self_: &Node,
+        builder: &mut BytesTrieBuilder,
+        s: &[u16],
+        value: i32,
+    ) -> Result<Node, BytesTrieBuilderError> {
+        Ok(self_.clone())
+    }
+
+    fn register(self_: &Node, tree: &mut BytesTrieNodeTree) -> Node {
+        self_.clone()
+    }
+
     fn mark_right_edges_first(&mut self, edge_number: i32) -> i32 {
         if self.offset() == 0 {
             self.set_offset(edge_number);
@@ -177,33 +233,35 @@ pub(crate) trait NodeTrait: WithOffset + Debug + Eq + PartialEq + 'static {
     }
 }
 
-impl NodeTrait for Node {
-    fn register(self_: &RcNode, tree: &mut BytesTrieNodeTree) -> RcNode {
-        match *self_.borrow() {
-            Node::FinalValue(_) => <FinalValueNode as NodeTrait>::register(self_, tree),
-            Node::BranchHead(_) => <BranchHeadNode as NodeTrait>::register(self_, tree),
-            Node::DynamicBranch(_) => <DynamicBranchNode as NodeTrait>::register(self_, tree),
-            Node::IntermediateValue(_) => {
-                <IntermediateValueNode as NodeTrait>::register(self_, tree)
-            }
-            Node::LinearMatch(_) => <LinearMatchNode as NodeTrait>::register(self_, tree),
-            Node::ListBranch(_) => <ListBranchNode as NodeTrait>::register(self_, tree),
-            Node::SplitBranch(_) => <SplitBranchNode as NodeTrait>::register(self_, tree),
-        }
-    }
+// impl NodeTrait for NodeInternal {
+//     fn register(self_: &Node, tree: &mut BytesTrieNodeTree) -> Node {
+//         match *self_.borrow() {
+//             NodeInternal::FinalValue(n) => <FinalValueNode as NodeTrait>::register(self_, tree),
+//             NodeInternal::BranchHead(n) => <BranchHeadNode as NodeTrait>::register(self_, tree),
+//             NodeInternal::DynamicBranch(n) => {
+//                 <DynamicBranchNode as NodeTrait>::register(self_, tree)
+//             }
+//             NodeInternal::IntermediateValue(n) => {
+//                 <IntermediateValueNode as NodeTrait>::register(self_, tree)
+//             }
+//             NodeInternal::LinearMatch(n) => <LinearMatchNode as NodeTrait>::register(self_, tree),
+//             NodeInternal::ListBranch(n) => <ListBranchNode as NodeTrait>::register(self_, tree),
+//             NodeInternal::SplitBranch(n) => <SplitBranchNode as NodeTrait>::register(self_, tree),
+//         }
+//     }
 
-    fn write(&mut self, builder: &mut BytesTrieBuilder) {
-        match self {
-            Node::FinalValue(n) => NodeTrait::write(n, builder),
-            Node::BranchHead(n) => NodeTrait::write(n, builder),
-            Node::DynamicBranch(n) => NodeTrait::write(n, builder),
-            Node::IntermediateValue(n) => NodeTrait::write(n, builder),
-            Node::LinearMatch(n) => NodeTrait::write(n, builder),
-            Node::ListBranch(n) => NodeTrait::write(n, builder),
-            Node::SplitBranch(n) => NodeTrait::write(n, builder),
-        }
-    }
-}
+//     fn write(&mut self, builder: &mut BytesTrieBuilder) {
+//         match self {
+//             NodeInternal::FinalValue(n) => NodeTrait::write(n, builder),
+//             NodeInternal::BranchHead(n) => NodeTrait::write(n, builder),
+//             NodeInternal::DynamicBranch(n) => NodeTrait::write(n, builder),
+//             NodeInternal::IntermediateValue(n) => NodeTrait::write(n, builder),
+//             NodeInternal::LinearMatch(n) => NodeTrait::write(n, builder),
+//             NodeInternal::ListBranch(n) => NodeTrait::write(n, builder),
+//             NodeInternal::SplitBranch(n) => NodeTrait::write(n, builder),
+//         }
+//     }
+// }
 
 pub(crate) trait RcNodeTrait {
     fn add(
@@ -211,29 +269,29 @@ pub(crate) trait RcNodeTrait {
         builder: &mut BytesTrieBuilder,
         s: &[u16],
         value: i32,
-    ) -> Result<RcNode, BytesTrieBuilderError>;
+    ) -> Result<Node, BytesTrieBuilderError>;
 
-    fn register(&self, tree: &mut BytesTrieNodeTree) -> RcNode;
+    fn register(&self, tree: &mut BytesTrieNodeTree) -> Node;
 }
 
-impl RcNodeTrait for RcNode {
+impl RcNodeTrait for Node {
     fn add(
         &self,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
         value: i32,
-    ) -> Result<RcNode, BytesTrieBuilderError> {
-        <Node as NodeTrait>::add(self, builder, s, value)
+    ) -> Result<Node, BytesTrieBuilderError> {
+        <NodeInternal as NodeTrait>::add(self, builder, s, value)
     }
 
-    fn register(&self, tree: &mut BytesTrieNodeTree) -> RcNode {
-        <Node as NodeTrait>::register(self, tree)
+    fn register(&self, tree: &mut BytesTrieNodeTree) -> Node {
+        <NodeInternal as NodeTrait>::register(self, tree)
     }
 }
 
-impl From<Node> for RcNode {
-    fn from(node: Node) -> Self {
-        Rc::new(RefCell::new(node))
+impl From<NodeInternal> for Node {
+    fn from(node: NodeInternal) -> Self {
+        Self(Rc::new(RefCell::new(node)))
     }
 }
 
@@ -247,9 +305,9 @@ macro_rules! impl_from {
 
         // Alas, blanket implementations for `T: Into<Node>` are not allowed, so we implement each
         // manually.
-        impl From<$inner_type> for RcNode {
+        impl From<$inner_type> for Node {
             fn from(inner: $inner_type) -> Self {
-                let node: Node = inner.into();
+                let node: NodeInternal = inner.into();
                 node.into()
             }
         }
@@ -264,35 +322,30 @@ impl_from!(LinearMatchNode, LinearMatch);
 impl_from!(ListBranchNode, ListBranch);
 impl_from!(SplitBranchNode, SplitBranch);
 
-macro_rules! impl_as_inner {
+/// Allows mutably borrowing a `Node` as a content variant (`C`).
+trait GetContent<C: NodeContentTrait> {
+    fn content(&self) -> RefMut<'_, C>;
+}
+
+macro_rules! impl_get_content {
     ($variant:ident) => {
         paste! {
-            #[doc = "Allows mutably borrowing an `RcNode` as a `" $variant "Node`."]
-            pub(crate) trait [<As $variant>] {
-                fn [<as_ $variant:snake>] (&self) -> std::cell::RefMut<'_, [<$variant Node>]>;
-                fn inner(&self) -> std::cell::RefMut<'_, [<$variant Node>]>;
-            }
-
-            impl [<As $variant>] for RcNode {
-                fn [<as_ $variant:snake>] (&self) -> std::cell::RefMut<'_, [<$variant Node>]> {
-                    std::cell::RefMut::map(self.borrow_mut(), |node| match node {
+            impl GetContent<[<$variant Node>]> for Node {
+                fn content(&self) -> std::cell::RefMut<'_, [<$variant Node>]> {
+                    std::cell::RefMut::map(self.borrow_mut(), |node| match node.content {
                         Node::$variant(inner) => inner,
                         _ => panic!("Assumed wrong variant for {:?}", node)
                     })
-                }
-
-                fn inner(&self) -> std::cell::RefMut<'_, [<$variant Node>]> {
-                    self.[<as_ $variant:snake>]()
                 }
             }
         }
     };
 }
 
-impl_as_inner!(FinalValue);
-impl_as_inner!(BranchHead);
-impl_as_inner!(DynamicBranch);
-impl_as_inner!(IntermediateValue);
-impl_as_inner!(LinearMatch);
-impl_as_inner!(ListBranch);
-impl_as_inner!(SplitBranch);
+impl_get_content!(FinalValue);
+impl_get_content!(BranchHead);
+impl_get_content!(DynamicBranch);
+impl_get_content!(IntermediateValue);
+impl_get_content!(LinearMatch);
+impl_get_content!(ListBranch);
+impl_get_content!(SplitBranch);

@@ -1,7 +1,7 @@
 use {
     super::{
         builder::{BytesTrieBuilder, BytesTrieNodeTree},
-        node::{Node, NodeTrait, RcNode, WithOffset},
+        node::{NodeInternal, NodeTrait, Node, WithOffset},
         value_node::{ValueNode, ValueNodeTrait},
     },
     std::{cell::RefCell, convert::TryInto, rc::Rc},
@@ -9,10 +9,9 @@ use {
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct BranchHeadNode {
-    pub(crate) offset: i32,
     pub(crate) value: Option<i32>,
     length: i32,
-    next: RcNode,
+    next: Node,
 }
 
 impl NodeTrait for BranchHeadNode {
@@ -38,7 +37,7 @@ impl NodeTrait for BranchHeadNode {
 }
 
 impl BranchHeadNode {
-    pub fn new(length: i32, sub_node: RcNode) -> BranchHeadNode {
+    pub fn new(length: i32, sub_node: Node) -> BranchHeadNode {
         BranchHeadNode {
             offset: 0,
             value: None,

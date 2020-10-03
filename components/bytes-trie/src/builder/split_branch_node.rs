@@ -1,18 +1,17 @@
 use {
     super::{
         builder::BytesTrieBuilder,
-        node::{Node, NodeTrait, RcNode, RcNodeTrait, WithOffset},
+        node::{NodeInternal, NodeTrait, Node, RcNodeTrait, WithOffset},
     },
     std::rc::Rc,
 };
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct SplitBranchNode {
-    pub(crate) offset: i32,
     first_edge_number: i32,
     unit: u16,
-    less_than: RcNode,
-    greater_or_equal: RcNode,
+    less_than: Node,
+    greater_or_equal: Node,
 }
 
 impl NodeTrait for SplitBranchNode {
@@ -50,7 +49,7 @@ impl NodeTrait for SplitBranchNode {
 }
 
 impl SplitBranchNode {
-    pub fn new(middle_unit: u16, less_than: RcNode, greater_or_equal: RcNode) -> Self {
+    pub fn new(middle_unit: u16, less_than: Node, greater_or_equal: Node) -> Self {
         Self {
             offset: 0,
             first_edge_number: 0,
