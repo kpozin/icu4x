@@ -4,7 +4,7 @@ use {
         dynamic_branch_node::DynamicBranchNode,
         errors::BytesTrieBuilderError,
         intermediate_value_node::IntermediateValueNode,
-        node::{AsDynamicBranch, AsLinearMatch, NodeInternal, NodeTrait, Node, RcNodeTrait, WithOffset},
+        node::{Node, NodeContentTrait, NodeInternal},
         value_node::ValueNodeTrait,
     },
     std::{
@@ -13,7 +13,7 @@ use {
     },
 };
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct LinearMatchNode {
     pub(crate) value: Option<i32>,
     length: i32,
@@ -22,85 +22,85 @@ pub(crate) struct LinearMatchNode {
     strings: Rc<RefCell<Vec<u16>>>,
 }
 
-impl NodeTrait for LinearMatchNode {
+impl NodeContentTrait for LinearMatchNode {
     fn add(
-        self_: &Node,
+        &mut self,
+        node: &Node,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError> {
-        let mut linear_match_node = self_.as_linear_match();
         if s.is_empty() {
-            if linear_match_node.has_value() {
+            if self.has_value() {
                 return Err(BytesTrieBuilderError::DuplicateString);
             } else {
-                linear_match_node.set_value(value);
-                return Ok(self_.clone());
+                self.set_value(value);
+                return Ok(node.clone());
             }
         }
-        let limit = linear_match_node.string_offset as usize + linear_match_node.length as usize;
+        let limit = self.string_offset as usize + self.length as usize;
         let mut start = 0;
-        for mut i in (linear_match_node.string_offset as usize)..limit {
+        for mut i in (self.string_offset as usize)..limit {
             if start == s.len() {
                 // s is a prefix with a new value. Split self into two linear-match nodes.
-                let prefix_length = i - linear_match_node.string_offset as usize;
+                let prefix_length = i - self.string_offset as usize;
                 let mut suffix_node = LinearMatchNode::new(
-                    linear_match_node.strings.clone(),
+                    self.strings.clone(),
                     i as i32,
-                    (linear_match_node.length - prefix_length as i32) as i32,
-                    linear_match_node.next.clone(),
+                    (self.length - prefix_length as i32) as i32,
+                    self.next.clone(),
                 );
                 suffix_node.set_value(value);
-                linear_match_node.length = prefix_length as i32;
-                linear_match_node.next = suffix_node.into();
-                return Ok(self_.clone());
+                self.length = prefix_length as i32;
+                self.next = suffix_node.into();
+                return Ok(node.clone());
             }
 
-            let this_char = linear_match_node.strings.borrow()[i as usize];
+            let this_char = self.strings.borrow()[i as usize];
             let new_char = s[start];
             if this_char != new_char {
                 // Mismatch, insert a branch node.
                 let mut branch_node = DynamicBranchNode::new();
 
                 let (result, this_suffix_node, branch_node): (Node, Node, Node) =
-                    if i == linear_match_node.string_offset as usize {
-                        if linear_match_node.has_value() {
+                    if i == self.string_offset as usize {
+                        if self.has_value() {
                             // Move the value for prefix length "start" to the new node.
-                            branch_node.set_value(linear_match_node.value().unwrap());
-                            linear_match_node.clear_value();
+                            branch_node.set_value(self.value().unwrap());
+                            self.clear_value();
                         }
-                        linear_match_node.string_offset += 1;
-                        linear_match_node.length -= 1;
-                        let this_suffix_node = if linear_match_node.length > 0 {
-                            self_.clone()
+                        self.string_offset += 1;
+                        self.length -= 1;
+                        let this_suffix_node = if self.length > 0 {
+                            node.clone()
                         } else {
-                            linear_match_node.next.clone()
+                            self.next.clone()
                         };
                         let branch_node: Node = branch_node.into();
                         (branch_node.clone(), this_suffix_node, branch_node)
                     } else if i == limit - 1 {
                         // Mismatch on last character, keep this node for the prefix.
-                        linear_match_node.length -= 1;
-                        let this_suffix_node = linear_match_node.next.clone();
+                        self.length -= 1;
+                        let this_suffix_node = self.next.clone();
                         let branch_node: Node = branch_node.into();
-                        linear_match_node.next = branch_node.clone();
-                        (self_.clone(), this_suffix_node, branch_node)
+                        self.next = branch_node.clone();
+                        (node.clone(), this_suffix_node, branch_node)
                     } else {
                         // Mismatch on intermediate character, keep this node for the prefix.
-                        let prefix_length = i - linear_match_node.string_offset as usize;
+                        let prefix_length = i - self.string_offset as usize;
                         // Suffix start offset (after this_char).
                         i += 1;
                         let this_suffix_node = LinearMatchNode::new(
-                            linear_match_node.strings.clone(),
+                            self.strings.clone(),
                             i as i32,
-                            linear_match_node.length - (prefix_length as i32 + 1),
-                            linear_match_node.next.clone(),
+                            self.length - (prefix_length as i32 + 1),
+                            self.next.clone(),
                         )
                         .into();
-                        linear_match_node.length = prefix_length as i32;
+                        self.length = prefix_length as i32;
                         let branch_node: Node = branch_node.into();
-                        linear_match_node.next = branch_node.clone();
-                        (self_.clone(), this_suffix_node, branch_node)
+                        self.next = branch_node.clone();
+                        (node.clone(), this_suffix_node, branch_node)
                     };
                 let new_suffix_node = builder.create_suffix_node(&s[(start + 1)..], value);
 
@@ -115,36 +115,32 @@ impl NodeTrait for LinearMatchNode {
             start += 1;
         }
 
-        linear_match_node.next = linear_match_node
-            .next
-            .add(builder, s, start as i32, value)?;
-        Ok(self_.clone())
+        self.next = self.next.add(builder, s, start as i32, value)?;
+        Ok(node.clone())
     }
 
-    fn register(self_: &Node, tree: &mut BytesTrieNodeTree) -> Node {
-        let mut linear_match_node = self_.as_linear_match();
-        linear_match_node.next = linear_match_node.next.register(tree);
+    fn register(&mut self, node: &Node, tree: &mut BytesTrieNodeTree) -> Node {
+        self.next = self.next.register(tree);
 
         // Break the linear-match sequence into chunks of at most kMaxLinearMatchLength.
         let max_linear_match_length = tree.max_linear_match_length();
-        while linear_match_node.length > max_linear_match_length {
-            let next_offset = linear_match_node.string_offset + linear_match_node.length
-                - max_linear_match_length;
-            linear_match_node.length -= max_linear_match_length;
+        while self.length > max_linear_match_length {
+            let next_offset = self.string_offset + self.length - max_linear_match_length;
+            self.length -= max_linear_match_length;
             let suffix_node = LinearMatchNode::new(
-                linear_match_node.strings.clone(),
+                self.strings.clone(),
                 next_offset,
                 max_linear_match_length,
-                linear_match_node.next.clone(),
+                self.next.clone(),
             );
-            linear_match_node.next = tree.register_node(suffix_node.into());
+            self.next = tree.register_node(suffix_node.into());
         }
-        let result = if linear_match_node.has_value() && !tree.match_nodes_can_have_values() {
-            let intermediate_value = linear_match_node.value().unwrap();
-            linear_match_node.clear_value();
-            IntermediateValueNode::new(intermediate_value, tree.register_node(self_.clone())).into()
+        let result = if self.has_value() && !tree.match_nodes_can_have_values() {
+            let intermediate_value = self.value().unwrap();
+            self.clear_value();
+            IntermediateValueNode::new(intermediate_value, tree.register_node(node.clone())).into()
         } else {
-            self_.clone()
+            node.clone()
         };
         tree.register_node(result)
     }
@@ -165,7 +161,6 @@ impl LinearMatchNode {
         next_node: Node,
     ) -> Self {
         LinearMatchNode {
-            offset: 0,
             value: None,
             length,
             next: next_node,

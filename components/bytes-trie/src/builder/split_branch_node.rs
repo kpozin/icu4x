@@ -1,12 +1,12 @@
 use {
     super::{
-        builder::BytesTrieBuilder,
-        node::{NodeInternal, NodeTrait, Node, RcNodeTrait, WithOffset},
+        builder::BytesTrieWriter,
+        node::{Node, NodeContentTrait},
     },
     std::rc::Rc,
 };
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct SplitBranchNode {
     first_edge_number: i32,
     unit: u16,
@@ -14,44 +14,41 @@ pub(crate) struct SplitBranchNode {
     greater_or_equal: Node,
 }
 
-impl NodeTrait for SplitBranchNode {
-    fn mark_right_edges_first(&mut self, mut edge_number: i32) -> i32 {
-        if self.offset == 0 {
+impl NodeContentTrait for SplitBranchNode {
+    fn mark_right_edges_first(&mut self, node: &Node, mut edge_number: i32) -> i32 {
+        if node.offset() == 0 {
             self.first_edge_number = edge_number;
             edge_number = self
                 .greater_or_equal
-                .borrow_mut()
                 .mark_right_edges_first(edge_number);
             edge_number = self
                 .less_than
-                .borrow_mut()
                 .mark_right_edges_first(edge_number - 1);
-            self.offset = edge_number;
+            node.set_offset(edge_number);
         }
         edge_number
     }
 
-    fn write(&mut self, builder: &mut super::builder::BytesTrieBuilder) {
+    fn write(&mut self, node: &Node,  writer: &mut BytesTrieWriter) {
         // Encode the less-than branch first.
-        self.less_than.borrow_mut().write_unless_inside_right_edge(
+        self.less_than.write_unless_inside_right_edge(
             self.first_edge_number,
-            self.greater_or_equal.borrow().offset(),
-            builder,
+            self.greater_or_equal.offset(),
+            writer,
         );
         // Encode the greater-or-equal branch last because we do not jump for it at all.
-        self.greater_or_equal.borrow_mut().write(builder);
+        self.greater_or_equal.write(writer);
         // Write this node.
-        let less_than_offset = self.less_than.borrow().offset();
+        let less_than_offset = self.less_than.offset();
         assert!(less_than_offset > 0);
-        builder.write_delta_to(less_than_offset);
-        self.offset = builder.write_unit(self.unit);
+        writer.write_delta_to(less_than_offset);
+        node.set_offset(writer.write_unit(self.unit));
     }
 }
 
 impl SplitBranchNode {
     pub fn new(middle_unit: u16, less_than: Node, greater_or_equal: Node) -> Self {
         Self {
-            offset: 0,
             first_edge_number: 0,
             unit: middle_unit,
             less_than,

@@ -5,7 +5,7 @@ use {
         errors::BytesTrieBuilderError,
         final_value_node::FinalValueNode,
         linear_match_node::LinearMatchNode,
-        node::{NodeInternal, NodeTrait, Node, RcNodeTrait},
+        node::{Node, NodeInternal, NodeTrait},
         value_node::{ValueNode, ValueNodeTrait},
     },
     std::{cell::RefCell, collections::HashSet, rc::Rc},
@@ -109,7 +109,7 @@ impl BytesTrieBuilder {
         if !s.is_empty() {
             let offset = data.strings.borrow().len();
             data.strings.borrow_mut().extend_from_slice(s);
-            LinearMatchNode::new(data.strings.clone(), offset, s.len(), next_node).into()
+            LinearMatchNode::new(data.strings.clone(), offset, s.len(), node).into()
         }
         node
     }
@@ -200,9 +200,7 @@ impl BytesTrieBuilderCommon for BytesTrieBuilder {
 }
 
 #[derive(Debug)]
-pub(crate) struct BytesTrieWriter {
-
-}
+pub(crate) struct BytesTrieWriter {}
 
 /// Build options for `BytesTrieBuilder`.
 #[derive(Debug, Eq, PartialEq)]

@@ -1,18 +1,18 @@
 use {
     super::{
         branch_head_node::BranchHeadNode,
-        builder::{BytesTrieBuilder, BytesTrieNodeTree},
+        builder::{BytesTrieBuilder, BytesTrieNodeTree, BytesTrieWriter},
         dynamic_branch_node::DynamicBranchNode,
         errors::BytesTrieBuilderError,
         final_value_node::FinalValueNode,
         intermediate_value_node::IntermediateValueNode,
         linear_match_node::LinearMatchNode,
-        node::{NodeInternal, NodeTrait, Node, WithOffset},
+        node::{Node, NodeContentTrait, NodeInternal},
     },
     std::{cell::RefCell, fmt::Debug, hash::Hash, rc::Rc},
 };
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) enum ValueNode {
     FinalValue(FinalValueNode),
     BranchHead(BranchHeadNode),
@@ -21,39 +21,23 @@ pub(crate) enum ValueNode {
     LinearMatch(LinearMatchNode),
 }
 
-impl WithOffset for ValueNode {
-    fn offset(&self) -> i32 {
+impl NodeContentTrait for ValueNode {
+    fn register(&mut self, node: &Node, tree: &mut BytesTrieNodeTree) -> Node {
+        <NodeInternal as NodeContentTrait>::register(self, node, tree)
+    }
+
+    fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
         match self {
-            ValueNode::FinalValue(n) => n.offset(),
-            ValueNode::BranchHead(n) => n.offset(),
-            ValueNode::DynamicBranch(n) => n.offset(),
-            ValueNode::IntermediateValue(n) => n.offset(),
-            ValueNode::LinearMatch(n) => n.offset(),
-        }
-    }
-
-    fn set_offset(&mut self, offset: i32) {
-        todo!()
-    }
-}
-
-impl NodeTrait for ValueNode {
-    fn register(self_: &Node, tree: &mut BytesTrieNodeTree) -> Node {
-        <NodeInternal as NodeTrait>::register(self_, tree)
-    }
-
-    fn write(&mut self, builder: &mut BytesTrieBuilder) {
-        match self {
-            ValueNode::FinalValue(n) => NodeTrait::write(n, builder),
-            ValueNode::BranchHead(n) => NodeTrait::write(n, builder),
-            ValueNode::DynamicBranch(n) => NodeTrait::write(n, builder),
-            ValueNode::IntermediateValue(n) => NodeTrait::write(n, builder),
-            ValueNode::LinearMatch(n) => NodeTrait::write(n, builder),
+            ValueNode::FinalValue(n) => NodeContentTrait::write(n, node, writer),
+            ValueNode::BranchHead(n) => NodeContentTrait::write(n, node, writer),
+            ValueNode::DynamicBranch(n) => NodeContentTrait::write(n, node, writer),
+            ValueNode::IntermediateValue(n) => NodeContentTrait::write(n, node, writer),
+            ValueNode::LinearMatch(n) => NodeContentTrait::write(n, node, writer),
         }
     }
 }
 
-pub(crate) trait ValueNodeTrait: NodeTrait {
+pub(crate) trait ValueNodeTrait: NodeContentTrait {
     // TODO: constructors
 
     fn value(&self) -> Option<i32>;
@@ -70,7 +54,8 @@ pub(crate) trait ValueNodeTrait: NodeTrait {
 
     // Used in FinalValueNode, BranchHeadNode, IntermediateValueNode,
     fn add(
-        self_: &Node,
+        &mut self,
+        node: &Node,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
         value: i32,
@@ -85,8 +70,8 @@ pub(crate) trait ValueNodeTrait: NodeTrait {
     }
 
     // Used in FinalValueNode, DynamicBranchNode.
-    fn write(&mut self, builder: &mut BytesTrieBuilder) {
-        let offset = builder.write_value_and_final(self.value().unwrap(), true);
+    fn write(&mut self, writer: &mut BytesTrieWriter) {
+        let offset = writer.write_value_and_final(self.value().unwrap(), true);
         self.set_offset(offset);
     }
 }
@@ -136,11 +121,11 @@ impl ValueNodeTrait for ValueNode {
 impl From<ValueNode> for NodeInternal {
     fn from(node: ValueNode) -> Self {
         match node {
-            ValueNode::FinalValue(n) => NodeInternal::FinalValue(n),
-            ValueNode::BranchHead(n) => NodeInternal::BranchHead(n),
-            ValueNode::DynamicBranch(n) => NodeInternal::DynamicBranch(n),
-            ValueNode::IntermediateValue(n) => NodeInternal::IntermediateValue(n),
-            ValueNode::LinearMatch(n) => NodeInternal::LinearMatch(n),
+            ValueNode::FinalValue(n) => NodeInternal::FinalValue(n).into(),
+            ValueNode::BranchHead(n) => NodeInternal::BranchHead(n).into(),
+            ValueNode::DynamicBranch(n) => NodeInternal::DynamicBranch(n).into(),
+            ValueNode::IntermediateValue(n) => NodeInternal::IntermediateValue(n).into(),
+            ValueNode::LinearMatch(n) => NodeInternal::LinearMatch(n).into(),
         }
     }
 }

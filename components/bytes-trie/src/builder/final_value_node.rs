@@ -1,35 +1,33 @@
 use super::{
-    builder::BytesTrieBuilder,
+    builder::{BytesTrieBuilder, BytesTrieWriter},
     errors::BytesTrieBuilderError,
-    node::{NodeInternal, NodeTrait, Node},
+    node::{Node, NodeContentTrait},
     value_node::ValueNodeTrait,
 };
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct FinalValueNode {
     pub(crate) value: Option<i32>,
 }
 
-impl NodeTrait for FinalValueNode {
+impl NodeContentTrait for FinalValueNode {
     fn add(
-        self_: &Node,
+        &mut self,
+        node: &Node,
         builder: &mut BytesTrieBuilder,
         s: &[u16],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError> {
-        <FinalValueNode as ValueNodeTrait>::add(self_, builder, s, value)
+        <FinalValueNode as ValueNodeTrait>::add(node, builder, s, value)
     }
 
-    fn write(&mut self, builder: &mut super::builder::BytesTrieBuilder) {
+    fn write(&mut self, builder: &mut BytesTrieWriter) {
         ValueNodeTrait::write(self, builder);
     }
 }
 
 impl FinalValueNode {
     pub fn new(value: i32) -> FinalValueNode {
-        FinalValueNode {
-            offset: 0,
-            value: Some(value),
-        }
+        FinalValueNode { value: Some(value) }
     }
 }

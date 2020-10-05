@@ -1,6 +1,8 @@
-use super::{list_branch_node::ListBranchNode, node::NodeInternal, split_branch_node::SplitBranchNode};
+use super::{
+    list_branch_node::ListBranchNode, node::NodeInternal, split_branch_node::SplitBranchNode,
+};
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) enum BranchNode {
     ListBranch(ListBranchNode),
     SplitBranch(SplitBranchNode),
@@ -9,8 +11,8 @@ pub(crate) enum BranchNode {
 impl From<BranchNode> for NodeInternal {
     fn from(node: BranchNode) -> Self {
         match node {
-            BranchNode::ListBranch(n) => NodeInternal::ListBranch(n),
-            BranchNode::SplitBranch(n) => NodeInternal::SplitBranch(n),
+            BranchNode::ListBranch(n) => NodeContent::ListBranch(n).into(),
+            BranchNode::SplitBranch(n) => NodeContent::SplitBranch(n).into(),
         }
     }
 }

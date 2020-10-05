@@ -1,13 +1,13 @@
 use {
     super::{
-        builder::BytesTrieBuilder,
-        node::{NodeInternal, NodeTrait, Node, RcNodeTrait, WithOffset},
+        builder::BytesTrieWriter,
+        node::{Node, NodeContentTrait, NodeInternal},
         value_node::ValueNodeTrait,
     },
     std::rc::Rc,
 };
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct ListBranchNode {
     first_edge_number: i32,
     equal: Vec<Option<Node>>, // `None` means "has final value"
@@ -16,16 +16,16 @@ pub(crate) struct ListBranchNode {
     units: Vec<u16>,
 }
 
-impl NodeTrait for ListBranchNode {
-    fn mark_right_edges_first(&mut self, mut edge_number: i32) -> i32 {
-        if self.offset == 0 {
+impl NodeContentTrait for ListBranchNode {
+    fn mark_right_edges_first(&mut self, node: &Node,  mut edge_number: i32) -> i32 {
+        if node.offset() == 0 {
             self.first_edge_number = edge_number;
             let mut step = 0;
             let mut i = self.length;
             loop {
                 i -= 1;
                 if let Some(edge) = &self.equal[i as usize] {
-                    edge_number = edge.borrow_mut().mark_right_edges_first(edge_number - step);
+                    edge_number = edge.mark_right_edges_first(edge_number - step);
                 }
                 // For all but the rightmost edge, decrement the edge number.
                 step = 1;
@@ -33,28 +33,28 @@ impl NodeTrait for ListBranchNode {
                     break;
                 }
             }
-            self.offset = edge_number;
+            node.set_offset(edge_number);
         }
         edge_number
     }
 
-    fn write(&mut self, builder: &mut BytesTrieBuilder) {
+    fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
         // Write the sub-nodes in reverse order: The jump lengths are deltas from after their own
         // positions, so if we wrote the `min_unit` sub-node first, then its jump delta would be
         // larger. Instead we write the `min_unit` sub-node last, for a shorter delta.
         let mut unit_number = self.length - 1;
         let right_edge = &self.equal[unit_number as usize];
         let right_edge_number = match right_edge {
-            Some(right_edge) => right_edge.borrow().offset(),
+            Some(right_edge) => right_edge.offset(),
             None => self.first_edge_number,
         };
         loop {
             unit_number -= 1;
             if let Some(node) = &self.equal[unit_number as usize] {
-                node.borrow_mut().write_unless_inside_right_edge(
+                node.write_unless_inside_right_edge(
                     self.first_edge_number,
                     right_edge_number,
-                    builder,
+                    writer,
                 );
             }
             if unit_number <= 0 {
@@ -67,26 +67,26 @@ impl NodeTrait for ListBranchNode {
         unit_number = self.length - 1;
         match right_edge {
             Some(right_edge) => {
-                right_edge.borrow_mut().write(builder);
+                right_edge.write(writer);
             }
             None => {
-                builder.write_value_and_final(self.values[unit_number as usize], true);
+                writer.write_value_and_final(self.values[unit_number as usize], true);
             }
         }
 
-        self.offset = builder.write_unit(self.units[unit_number as usize]);
+        node.set_offset(writer.write_unit(self.units[unit_number as usize]));
 
         // Write the rest of this node's unit-value pairs.
         for unit_number in (0..(unit_number - 1)).rev() {
             let (value, is_final) = match &self.equal[unit_number as usize] {
-                Some(node) => {
-                    assert!(node.borrow().offset() > 0);
-                    (self.offset - node.borrow().offset(), false)
+                Some(equal_node) => {
+                    assert!(equal_node.offset() > 0);
+                    (node.offset() - equal_node.offset(), false)
                 }
                 None => (self.values[unit_number as usize], true),
             };
-            builder.write_value_and_final(value, is_final);
-            self.offset = builder.write_unit(self.units[unit_number as usize]);
+            writer.write_value_and_final(value, is_final);
+            node.set_offset(writer.write_unit(self.units[unit_number as usize]));
         }
     }
 }
@@ -94,7 +94,6 @@ impl NodeTrait for ListBranchNode {
 impl ListBranchNode {
     pub fn new(capacity: usize) -> Self {
         ListBranchNode {
-            offset: 0,
             first_edge_number: 0,
             equal: vec![None; capacity],
             length: 0,
