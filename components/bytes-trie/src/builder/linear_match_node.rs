@@ -1,19 +1,20 @@
 use {
     super::{
-        builder::{BytesTrieBuilder, BytesTrieNodeTree},
+        builder::{BytesTrieBuilder, BytesTrieBuilderCommon, BytesTrieNodeTree, BytesTrieWriter},
         dynamic_branch_node::DynamicBranchNode,
         errors::BytesTrieBuilderError,
         intermediate_value_node::IntermediateValueNode,
-        node::{Node, NodeContentTrait, NodeInternal},
-        value_node::ValueNodeTrait,
+        node::{GetContent, Node, NodeContentTrait, NodeInternal},
+        value_node::ValueNodeContentTrait,
     },
     std::{
         cell::{RefCell, RefMut},
+        hash::Hash,
         rc::Rc,
     },
 };
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq)]
 pub(crate) struct LinearMatchNode {
     pub(crate) value: Option<i32>,
     length: i32,
@@ -104,18 +105,16 @@ impl NodeContentTrait for LinearMatchNode {
                     };
                 let new_suffix_node = builder.create_suffix_node(&s[(start + 1)..], value);
 
-                branch_node
-                    .as_dynamic_branch()
-                    .add(this_char, this_suffix_node);
-                branch_node
-                    .as_dynamic_branch()
-                    .add(new_char, new_suffix_node.into());
+                let mut branch_node_content =
+                    <GetContent<DynamicBranchNode>>::content_mut(&branch_node);
+                branch_node_content.add_char(this_char, this_suffix_node);
+                branch_node_content.add_char(new_char, new_suffix_node.into());
                 return Ok(result);
             }
             start += 1;
         }
 
-        self.next = self.next.add(builder, s, start as i32, value)?;
+        self.next = self.next.add(builder, &s[start..], value)?;
         Ok(node.clone())
     }
 
@@ -145,11 +144,12 @@ impl NodeContentTrait for LinearMatchNode {
         tree.register_node(result)
     }
 
-    fn write(&mut self, builder: &mut super::builder::BytesTrieBuilder) {
-        self.next.borrow_mut().write(builder);
-        builder.write_offset_and_length(self.string_offset, self.length);
-        self.offset = builder
-            .write_value_and_type(self.value(), builder.min_linear_match() + self.length - 1);
+    fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
+        self.next.write(writer);
+        writer.write_offset_and_length(self.string_offset, self.length);
+        let offset =
+            writer.write_value_and_type(self.value(), writer.min_linear_match() + self.length - 1);
+        node.set_offset(offset);
     }
 }
 
@@ -167,5 +167,15 @@ impl LinearMatchNode {
             string_offset: offset,
             strings: builder_strings,
         }
+    }
+}
+
+impl Hash for LinearMatchNode {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
+        self.length.hash(state);
+        self.next.hash(state);
+        self.string_offset.hash(state);
+        self.strings.borrow().hash(state);
     }
 }

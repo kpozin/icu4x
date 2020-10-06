@@ -2,7 +2,7 @@ use super::{
     builder::{BytesTrieBuilder, BytesTrieWriter},
     errors::BytesTrieBuilderError,
     node::{Node, NodeContentTrait},
-    value_node::ValueNodeTrait,
+    value_node::ValueNodeContentTrait,
 };
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -18,11 +18,11 @@ impl NodeContentTrait for FinalValueNode {
         s: &[u16],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError> {
-        <FinalValueNode as ValueNodeTrait>::add(node, builder, s, value)
+        ValueNodeContentTrait::add(self, node, builder, s, value)
     }
 
-    fn write(&mut self, builder: &mut BytesTrieWriter) {
-        ValueNodeTrait::write(self, builder);
+    fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
+        ValueNodeContentTrait::write(self, node, writer);
     }
 }
 

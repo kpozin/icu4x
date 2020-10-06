@@ -2,7 +2,7 @@ use {
     super::{
         builder::BytesTrieWriter,
         node::{Node, NodeContentTrait, NodeInternal},
-        value_node::ValueNodeTrait,
+        value_node::ValueNodeContentTrait,
     },
     std::rc::Rc,
 };
@@ -17,7 +17,7 @@ pub(crate) struct ListBranchNode {
 }
 
 impl NodeContentTrait for ListBranchNode {
-    fn mark_right_edges_first(&mut self, node: &Node,  mut edge_number: i32) -> i32 {
+    fn mark_right_edges_first(&mut self, node: &Node, mut edge_number: i32) -> i32 {
         if node.offset() == 0 {
             self.first_edge_number = edge_number;
             let mut step = 0;

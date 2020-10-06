@@ -1,12 +1,12 @@
 use super::{
     branch_head_node::BranchHeadNode,
-    builder::{BytesTrieBuilder, BytesTrieNodeTree},
+    builder::{BytesTrieBuilder, BytesTrieBuilderCommon, BytesTrieNodeTree, BytesTrieWriter},
     errors::BytesTrieBuilderError,
     intermediate_value_node::IntermediateValueNode,
     list_branch_node::ListBranchNode,
-    node::{Node, NodeContentTrait, NodeInternal},
+    node::{Node, NodeContent, NodeContentTrait, NodeInternal},
     split_branch_node::SplitBranchNode,
-    value_node::ValueNodeTrait,
+    value_node::ValueNodeContentTrait,
 };
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -46,7 +46,7 @@ impl NodeContentTrait for DynamicBranchNode {
     }
 
     fn register(&mut self, node: &Node, tree: &mut BytesTrieNodeTree) -> Node {
-        let sub_node = node.register_with_limits(tree, 0, self.chars.len() as i32);
+        let sub_node = self.register_with_limits(node, tree, 0, self.chars.len() as i32);
         let mut head = BranchHeadNode::new(self.chars.len() as i32, sub_node);
         let result: Node = if self.has_value() {
             let value = self.value().unwrap();
@@ -62,8 +62,8 @@ impl NodeContentTrait for DynamicBranchNode {
         tree.register_node(result)
     }
 
-    fn write(&mut self, builder: &mut BytesTrieBuilder) {
-        ValueNodeTrait::write(self, builder);
+    fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
+        ValueNodeContentTrait::write(self, node, writer);
     }
 }
 
@@ -136,7 +136,7 @@ impl DynamicBranchNodeExt for DynamicBranchNode {
         loop {
             let c = self.chars[start];
             let node = self.equal[start].clone();
-            if let NodeInternal::FinalValue(final_value_node) = &*node.borrow() {
+            if let NodeContent::FinalValue(final_value_node) = &mut *node.content_mut() {
                 list_branch_node.add_with_final_value(c, final_value_node.value().unwrap());
             } else {
                 list_branch_node.add_with_match_node(c, node.clone());

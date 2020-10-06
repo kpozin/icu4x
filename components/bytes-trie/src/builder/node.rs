@@ -31,6 +31,14 @@ impl Node {
         self.internal_mut().set_offset(offset);
     }
 
+    pub(crate) fn content(&self) -> Ref<'_, NodeContent> {
+        Ref::map(self.internal(), |internal| &internal.content)
+    }
+
+    pub(crate) fn content_mut(&self) -> RefMut<'_, NodeContent> {
+        RefMut::map(self.internal_mut(), |internal| &mut internal.content)
+    }
+
     /// Recursive method for adding a new (string, value) pair. Matches the remaining part of `s`
     /// from `start`, and adds a new node where there is a mismatch.
     ///
@@ -81,12 +89,13 @@ impl Node {
     /// Returns an edge number that is at least the maximum-negative of the input edge number and
     /// the numbers of this node and all of its sub-nodes.
     pub(crate) fn mark_right_edges_first(&self, edge_number: i32) -> i32 {
-        self.internal_mut().mark_right_edges_first(edge_number)
+        self.internal_mut()
+            .mark_right_edges_first(self, edge_number)
     }
 
     /// Must set the offset to a positive value.
     pub(crate) fn write(&self, writer: &mut BytesTrieWriter) {
-        self.internal_mut().write(writer);
+        self.internal_mut().write(self, writer);
     }
 
     /// See `mark_right_edges_first`.
@@ -158,10 +167,7 @@ pub(crate) struct NodeInternal {
 
 impl NodeInternal {
     pub fn new(content: NodeContent) -> Self {
-        Self {
-            offset: 0,
-            content
-        }
+        Self { offset: 0, content }
     }
 }
 
@@ -206,25 +212,25 @@ impl NodeInternal {
 
     fn mark_right_edges_first(&mut self, node: &Node, edge_number: i32) -> i32 {
         match &mut self.content {
-            NodeContent::FinalValue(n) => n.mark_right_edges_first(edge_number),
-            NodeContent::BranchHead(n) => n.mark_right_edges_first(edge_number),
-            NodeContent::DynamicBranch(n) => n.mark_right_edges_first(edge_number),
-            NodeContent::IntermediateValue(n) => n.mark_right_edges_first(edge_number),
-            NodeContent::LinearMatch(n) => n.mark_right_edges_first(edge_number),
-            NodeContent::ListBranch(n) => n.mark_right_edges_first(edge_number),
-            NodeContent::SplitBranch(n) => n.mark_right_edges_first(edge_number),
+            NodeContent::FinalValue(n) => n.mark_right_edges_first(node, edge_number),
+            NodeContent::BranchHead(n) => n.mark_right_edges_first(node, edge_number),
+            NodeContent::DynamicBranch(n) => n.mark_right_edges_first(node, edge_number),
+            NodeContent::IntermediateValue(n) => n.mark_right_edges_first(node, edge_number),
+            NodeContent::LinearMatch(n) => n.mark_right_edges_first(node, edge_number),
+            NodeContent::ListBranch(n) => n.mark_right_edges_first(node, edge_number),
+            NodeContent::SplitBranch(n) => n.mark_right_edges_first(node, edge_number),
         }
     }
 
     fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
         match &mut self.content {
-            NodeContent::FinalValue(n) => n.write(writer),
-            NodeContent::BranchHead(n) => n.write(writer),
-            NodeContent::DynamicBranch(n) => n.write(writer),
-            NodeContent::IntermediateValue(n) => n.write(writer),
-            NodeContent::LinearMatch(n) => n.write(writer),
-            NodeContent::ListBranch(n) => n.write(writer),
-            NodeContent::SplitBranch(n) => n.write(writer),
+            NodeContent::FinalValue(n) => n.write(node, writer),
+            NodeContent::BranchHead(n) => n.write(node, writer),
+            NodeContent::DynamicBranch(n) => n.write(node, writer),
+            NodeContent::IntermediateValue(n) => n.write(node, writer),
+            NodeContent::LinearMatch(n) => n.write(node, writer),
+            NodeContent::ListBranch(n) => n.write(node, writer),
+            NodeContent::SplitBranch(n) => n.write(node, writer),
         }
     }
 }
@@ -281,18 +287,26 @@ impl_from!(ListBranchNode, ListBranch);
 impl_from!(SplitBranchNode, SplitBranch);
 
 /// Allows mutably borrowing a `Node` as a content variant (`C`).
-trait GetContent<C: NodeContentTrait> {
-    fn content(&self) -> RefMut<'_, C>;
+pub(crate) trait GetContent<C: NodeContentTrait> {
+    fn content(&self) -> Ref<'_, C>;
+    fn content_mut(&self) -> RefMut<'_, C>;
 }
 
 macro_rules! impl_get_content {
     ($variant:ident) => {
         paste! {
             impl GetContent<[<$variant Node>]> for Node {
-                fn content(&self) -> std::cell::RefMut<'_, [<$variant Node>]> {
-                    std::cell::RefMut::map(self.borrow_mut(), |node| match node.content {
-                        NodeInternal::$variant(inner) => inner,
-                        _ => panic!("Assumed wrong variant for {:?}", node)
+                fn content(&self) -> std::cell::Ref<'_, [<$variant Node>]> {
+                    std::cell::Ref::map(self.content(), |content| match content {
+                        NodeContent::$variant(inner) => inner,
+                        _ => panic!("Assumed wrong variant for {:?}", self)
+                    })
+                }
+
+                fn content_mut(&self) -> std::cell::RefMut<'_, [<$variant Node>]> {
+                    std::cell::RefMut::map(self.content_mut(), |content| match content {
+                        NodeContent::$variant(inner) => inner,
+                        _ => panic!("Assumed wrong variant for {:?}", self)
                     })
                 }
             }

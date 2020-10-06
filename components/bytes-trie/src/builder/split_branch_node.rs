@@ -18,18 +18,14 @@ impl NodeContentTrait for SplitBranchNode {
     fn mark_right_edges_first(&mut self, node: &Node, mut edge_number: i32) -> i32 {
         if node.offset() == 0 {
             self.first_edge_number = edge_number;
-            edge_number = self
-                .greater_or_equal
-                .mark_right_edges_first(edge_number);
-            edge_number = self
-                .less_than
-                .mark_right_edges_first(edge_number - 1);
+            edge_number = self.greater_or_equal.mark_right_edges_first(edge_number);
+            edge_number = self.less_than.mark_right_edges_first(edge_number - 1);
             node.set_offset(edge_number);
         }
         edge_number
     }
 
-    fn write(&mut self, node: &Node,  writer: &mut BytesTrieWriter) {
+    fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
         // Encode the less-than branch first.
         self.less_than.write_unless_inside_right_edge(
             self.first_edge_number,

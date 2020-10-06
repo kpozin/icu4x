@@ -1,8 +1,8 @@
 use {
     super::{
-        builder::{BytesTrieBuilder, BytesTrieNodeTree, BytesTrieWriter},
+        builder::{BytesTrieBuilder, BytesTrieBuilderCommon, BytesTrieNodeTree, BytesTrieWriter},
         node::{Node, NodeContentTrait, NodeInternal},
-        value_node::{ValueNode, ValueNodeTrait},
+        value_node::{ValueNode, ValueNodeContentTrait},
     },
     std::{cell::RefCell, convert::TryInto, rc::Rc},
 };
@@ -18,21 +18,21 @@ impl NodeContentTrait for BranchHeadNode {
     fn mark_right_edges_first(&mut self, node: &Node, mut edge_number: i32) -> i32 {
         if node.offset() == 0 {
             edge_number = self.next.mark_right_edges_first(edge_number);
-            node.offset = edge_number;
+            node.set_offset(edge_number);
         }
         edge_number
     }
 
-    fn write(&mut self, node: &Node, builder: &mut BytesTrieWriter) {
-        self.next.write(builder);
+    fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
+        self.next.write(writer);
         let length = self.length;
-        let offset = if length <= builder.min_linear_match() {
-            builder.write_value_and_type(self.value(), self.length - 1)
+        let offset = if length <= writer.min_linear_match() {
+            writer.write_value_and_type(self.value(), self.length - 1)
         } else {
-            builder.write_unit((length - 1).try_into().unwrap());
-            builder.write_value_and_type(self.value(), 0)
+            writer.write_unit((length - 1).try_into().unwrap());
+            writer.write_value_and_type(self.value(), 0)
         };
-        self.set_offset(offset);
+        node.set_offset(offset);
     }
 }
 

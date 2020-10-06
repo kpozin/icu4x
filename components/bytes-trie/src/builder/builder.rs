@@ -5,8 +5,8 @@ use {
         errors::BytesTrieBuilderError,
         final_value_node::FinalValueNode,
         linear_match_node::LinearMatchNode,
-        node::{Node, NodeInternal, NodeTrait},
-        value_node::{ValueNode, ValueNodeTrait},
+        node::{Node, NodeContent, NodeInternal, NodeTrait},
+        value_node::{ValueNode, ValueNodeContentTrait},
     },
     std::{cell::RefCell, collections::HashSet, rc::Rc},
 };
@@ -23,7 +23,7 @@ enum State {
 }
 
 #[derive(Debug)]
-struct CommonData {
+pub(crate) struct CommonData {
     /// Strings and sub-strings for linear-match nodes.
     strings: Rc<RefCell<Vec<u16>>>,
 
@@ -41,7 +41,7 @@ pub struct BytesTrieBuilder {
     common_data: CommonData,
 }
 
-trait BytesTrieBuilderCommon {
+pub(crate) trait BytesTrieBuilderCommon {
     fn common_data(&self) -> &CommonData;
 
     fn common_data_mut(&mut self) -> &mut CommonData;
@@ -50,8 +50,8 @@ trait BytesTrieBuilderCommon {
         let data = self.common_data_mut();
         // We always register final values because while ADDING we do not know yet whether we will
         // build fast or small.
-        match &mut *data.lookup_final_value_node.borrow_mut() {
-            NodeInternal::FinalValue(node) => {
+        match &mut *data.lookup_final_value_node.content_mut() {
+            NodeContent::FinalValue(node) => {
                 node.set_final_value(value);
             }
             _ => {
@@ -71,6 +71,22 @@ trait BytesTrieBuilderCommon {
 
         new_node
     }
+
+    fn min_linear_match(&self) -> i32 {
+        todo!()
+    }
+
+    fn max_branch_linear_sub_node_length(&self) -> i32 {
+        todo!()
+    }
+
+    fn match_nodes_can_have_values(&self) -> bool {
+        todo!()
+    }
+
+    fn max_linear_match_length(&self) -> i32 {
+        todo!()
+    }
 }
 
 impl BytesTrieBuilder {
@@ -84,6 +100,7 @@ impl BytesTrieBuilder {
 
     fn build_impl(self, build_mode: BuildMode) -> Result<Vec<u8>, BytesTrieBuilderError> {
         let tree = BytesTrieNodeTree::from_builder(self, build_mode)?;
+        todo!()
     }
 
     pub(crate) fn add_impl(&mut self, s: &[u16], value: i32) -> Result<(), BytesTrieBuilderError> {
@@ -91,11 +108,17 @@ impl BytesTrieBuilder {
             return Err(BytesTrieBuilderError::KeyTooLong);
         }
 
-        let data = self.common_data();
-        if data.root.is_none() {
-            data.root = Some(self.create_suffix_node(s, value).into());
+        // Note: can't put common_data_mut() in a variable due to borrowing restrictions.
+        if self.common_data_mut().root.is_none() {
+            self.common_data_mut().root = Some(self.create_suffix_node(s, value).into());
         } else {
-            data.root = Some(data.root.take().unwrap().add(self, s, 0, value)?);
+            self.common_data_mut().root = Some(
+                self.common_data_mut()
+                    .root
+                    .take()
+                    .unwrap()
+                    .add(self, s, value)?,
+            );
         }
 
         Ok(())
@@ -103,51 +126,27 @@ impl BytesTrieBuilder {
 
     // pub(crate) build_impl(&mut self)
 
-    pub(crate) fn create_suffix_node(&mut self, s: &[u16], value: i32) -> ValueNode {
-        let data = self.common_data();
+    pub(crate) fn create_suffix_node(&mut self, s: &[u16], value: i32) -> Node {
         let node = self.register_final_value(value);
-        if !s.is_empty() {
+        let node = if s.is_empty() {
+            node
+        } else {
+            let data = self.common_data();
             let offset = data.strings.borrow().len();
             data.strings.borrow_mut().extend_from_slice(s);
-            LinearMatchNode::new(data.strings.clone(), offset, s.len(), node).into()
-        }
+            LinearMatchNode::new(data.strings.clone(), offset as i32, s.len() as i32, node).into()
+        };
         node
     }
+}
 
-    pub(crate) fn min_linear_match(&self) -> i32 {
-        todo!()
+impl BytesTrieBuilderCommon for BytesTrieBuilder {
+    fn common_data(&self) -> &CommonData {
+        &self.common_data
     }
 
-    pub(crate) fn write_unit(&mut self, unit: u16) -> i32 {
-        todo!()
-    }
-
-    pub(crate) fn write_offset_and_length(&mut self, offset: i32, length: i32) -> i32 {
-        todo!()
-    }
-
-    pub(crate) fn write_value_and_type(&mut self, value: Option<i32>, node: i32) -> i32 {
-        todo!()
-    }
-
-    pub(crate) fn write_value_and_final(&mut self, value: i32, is_final: bool) -> i32 {
-        todo!()
-    }
-
-    pub(crate) fn max_branch_linear_sub_node_length(&self) -> i32 {
-        todo!()
-    }
-
-    pub(crate) fn match_nodes_can_have_values(&self) -> bool {
-        todo!()
-    }
-
-    pub(crate) fn max_linear_match_length(&self) -> i32 {
-        todo!()
-    }
-
-    pub(crate) fn write_delta_to(&mut self, jump_target: i32) -> i32 {
-        todo!()
+    fn common_data_mut(&mut self) -> &mut CommonData {
+        &mut self.common_data
     }
 }
 
@@ -164,12 +163,15 @@ impl BytesTrieNodeTree {
     ) -> Result<Self, BytesTrieBuilderError> {
         let BytesTrieBuilder { common_data } = builder;
 
-        let tree = BytesTrieNodeTree {
+        let mut tree = BytesTrieNodeTree {
             common_data,
             build_mode,
         };
 
-        tree.common_data.root.register(&mut tree);
+        let root = tree.common_data().root.as_ref().unwrap().clone();
+        root.register(&mut tree);
+
+        Ok(tree)
     }
 
     pub(crate) fn register_node(&mut self, new_node: Node) -> Node {
@@ -179,7 +181,7 @@ impl BytesTrieNodeTree {
         // BuildMode::Small
 
         let old_node = self.common_data.nodes.get(&new_node);
-        if Some(old_node) = old_node {
+        if let Some(old_node) = old_node {
             old_node.clone()
         } else {
             let was_absent = self.common_data.nodes.insert(new_node.clone());
@@ -189,7 +191,7 @@ impl BytesTrieNodeTree {
     }
 }
 
-impl BytesTrieBuilderCommon for BytesTrieBuilder {
+impl BytesTrieBuilderCommon for BytesTrieNodeTree {
     fn common_data(&self) -> &CommonData {
         &self.common_data
     }
@@ -201,6 +203,38 @@ impl BytesTrieBuilderCommon for BytesTrieBuilder {
 
 #[derive(Debug)]
 pub(crate) struct BytesTrieWriter {}
+
+impl BytesTrieWriter {
+    pub(crate) fn write_unit(&mut self, unit: u16) -> i32 {
+        todo!()
+    }
+
+    pub(crate) fn write_offset_and_length(&mut self, offset: i32, length: i32) -> i32 {
+        todo!()
+    }
+
+    pub(crate) fn write_value_and_final(&mut self, value: i32, is_final: bool) -> i32 {
+        todo!()
+    }
+
+    pub(crate) fn write_value_and_type(&mut self, value: Option<i32>, node: i32) -> i32 {
+        todo!()
+    }
+
+    pub(crate) fn write_delta_to(&mut self, jump_target: i32) -> i32 {
+        todo!()
+    }
+}
+
+impl BytesTrieBuilderCommon for BytesTrieWriter {
+    fn common_data(&self) -> &CommonData {
+        todo!()
+    }
+
+    fn common_data_mut(&mut self) -> &mut CommonData {
+        todo!()
+    }
+}
 
 /// Build options for `BytesTrieBuilder`.
 #[derive(Debug, Eq, PartialEq)]
