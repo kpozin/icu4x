@@ -39,7 +39,7 @@ pub(crate) trait ValueNodeContentTrait: NodeContentTrait {
         &mut self,
         node: &Node,
         builder: &mut BytesTrieBuilder,
-        s: &[u16],
+        s: &[u8],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError> {
         if s.is_empty() {

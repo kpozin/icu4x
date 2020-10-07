@@ -13,7 +13,7 @@ pub(crate) struct ListBranchNode {
     equal: Vec<Option<Node>>, // `None` means "has final value"
     length: usize,
     values: Vec<i32>,
-    units: Vec<u16>,
+    units: Vec<u8>,
 }
 
 impl NodeContentTrait for ListBranchNode {
@@ -103,7 +103,7 @@ impl ListBranchNode {
     }
 
     /// Adds a unit with a final value.
-    pub fn add_with_final_value(&mut self, c: u16, value: i32) {
+    pub fn add_with_final_value(&mut self, c: u8, value: i32) {
         self.units[self.length] = c;
         self.equal[self.length] = None;
         self.values[self.length] = value;
@@ -111,7 +111,7 @@ impl ListBranchNode {
     }
 
     /// Adds a unit which leads to another match node.
-    pub fn add_with_match_node(&mut self, c: u16, node: Node) {
+    pub fn add_with_match_node(&mut self, c: u8, node: Node) {
         self.units[self.length] = c;
         self.equal[self.length] = Some(node);
         self.values[self.length] = 0;

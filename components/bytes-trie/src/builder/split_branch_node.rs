@@ -9,7 +9,7 @@ use {
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct SplitBranchNode {
     first_edge_number: i32,
-    unit: u16,
+    unit: u8,
     less_than: Node,
     greater_or_equal: Node,
 }
@@ -43,7 +43,7 @@ impl NodeContentTrait for SplitBranchNode {
 }
 
 impl SplitBranchNode {
-    pub fn new(middle_unit: u16, less_than: Node, greater_or_equal: Node) -> Self {
+    pub fn new(middle_unit: u8, less_than: Node, greater_or_equal: Node) -> Self {
         Self {
             first_edge_number: 0,
             unit: middle_unit,

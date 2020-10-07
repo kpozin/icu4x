@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 use {
     super::{
         errors::BytesTrieBuilderError,
@@ -8,7 +6,8 @@ use {
         node::{Node, NodeContent, NodeInternal, NodeTrait},
         value_node::{ValueNode, ValueNodeContentTrait},
     },
-    std::{cell::RefCell, collections::HashSet, rc::Rc},
+    crate::trie::encoding::{CompactDelta, CompactInt, CompactValue, VALUE_IS_FINAL},
+    std::{cell::RefCell, collections::HashSet, convert::TryInto, rc::Rc},
 };
 
 const MAX_KEY_LENGTH: usize = 0xffff;
@@ -25,7 +24,7 @@ enum State {
 #[derive(Debug)]
 pub(crate) struct CommonData {
     /// Strings and sub-strings for linear-match nodes.
-    strings: Rc<RefCell<Vec<u16>>>,
+    strings: Rc<RefCell<Vec<u8>>>,
 
     root: Option<Node>,
 
@@ -100,10 +99,12 @@ impl BytesTrieBuilder {
 
     fn build_impl(self, build_mode: BuildMode) -> Result<Vec<u8>, BytesTrieBuilderError> {
         let tree = BytesTrieNodeTree::from_builder(self, build_mode)?;
+        let writer = BytesTrieWriter::from_node_tree(tree)?;
+        // writer.ma
         todo!()
     }
 
-    pub(crate) fn add_impl(&mut self, s: &[u16], value: i32) -> Result<(), BytesTrieBuilderError> {
+    pub(crate) fn add_impl(&mut self, s: &[u8], value: i32) -> Result<(), BytesTrieBuilderError> {
         if s.len() > MAX_KEY_LENGTH {
             return Err(BytesTrieBuilderError::KeyTooLong);
         }
@@ -126,7 +127,7 @@ impl BytesTrieBuilder {
 
     // pub(crate) build_impl(&mut self)
 
-    pub(crate) fn create_suffix_node(&mut self, s: &[u16], value: i32) -> Node {
+    pub(crate) fn create_suffix_node(&mut self, s: &[u8], value: i32) -> Node {
         let node = self.register_final_value(value);
         let node = if s.is_empty() {
             node
@@ -202,37 +203,116 @@ impl BytesTrieBuilderCommon for BytesTrieNodeTree {
 }
 
 #[derive(Debug)]
-pub(crate) struct BytesTrieWriter {}
+pub(crate) struct BytesTrieWriter {
+    common_data: CommonData,
+    bytes: Vec<u8>,
+}
 
 impl BytesTrieWriter {
-    pub(crate) fn write_unit(&mut self, unit: u16) -> i32 {
+    fn from_node_tree(tree: BytesTrieNodeTree) -> Result<Self, BytesTrieBuilderError> {
+        let BytesTrieNodeTree {
+            common_data,
+            build_mode: _,
+        } = tree;
+        Ok(BytesTrieWriter {
+            common_data,
+            bytes: vec![],
+        })
+    }
+
+    pub(crate) fn write_unit(&mut self, unit: u8) -> usize {
+        self.bytes.push(unit);
+        self.bytes.len()
+    }
+
+    pub(crate) fn write_offset_and_length(&mut self, offset: usize, length: usize) -> usize {
+        let source = &self.common_data().strings.borrow()[offset..(offset + length)];
+        self.bytes.extend_from_slice(source);
+        self.bytes.len()
+    }
+
+    pub(crate) fn write_value_and_final(&mut self, value: i32, is_final: bool) -> usize {
+        let final_mask: u8 = if is_final { VALUE_IS_FINAL } else { 0 };
+        if (0..=CompactValue::MAX_ONE_BYTE as i32).contains(&value) {
+            let unit = ((CompactValue::MIN_ONE_BYTE_LEAD as i32 + value) << 1) | final_mask as i32;
+            return self.write_unit(unit as u8);
+        }
+
+        let mut bytes: Vec<u8> = Vec::with_capacity(5);
+        // Doesn't fit in three bytes.
+        if value < 0 || value > 0xffffff {
+            bytes.push(CompactValue::FIVE_BYTE_LEAD as u8);
+            bytes.push((value >> 24) as u8);
+            bytes.push((value >> 16) as u8);
+            bytes.push((value >> 8) as u8);
+            bytes.push(value as u8);
+        } else {
+            if value <= CompactValue::MAX_TWO_BYTE {
+                bytes.push((CompactValue::MIN_TWO_BYTE_LEAD as i32 + (value >> 8)) as u8);
+            } else {
+                if value <= CompactValue::MAX_THREE_BYTE {
+                    bytes.push((CompactValue::MIN_THREE_BYTE_LEAD as i32 + (value >> 16)) as u8);
+                } else {
+                    bytes.push(CompactValue::FOUR_BYTE_LEAD as u8);
+                    bytes.push((value >> 16) as u8);
+                }
+                bytes.push((value >> 8) as u8);
+            }
+            bytes.push(value as u8);
+        }
+        bytes[0] = ((bytes[0] << 1) | final_mask) as u8;
+        self.write_bytes(&bytes[..])
+    }
+
+    pub(crate) fn write_value_and_type(&mut self, value: Option<i32>, node: i32) -> usize {
+        let offset = self.write_unit(node as u8);
+        if let Some(value) = value {
+            self.write_value_and_final(value, false)
+        } else {
+            offset
+        }
+    }
+
+    pub(crate) fn write_delta_to(&mut self, jump_target: i32) -> usize {
+        let i = self.bytes.len() as i32 - jump_target;
+        assert!(i > 0);
+        if i <= CompactDelta::MAX_ONE_BYTE as i32 {
+            return self.write_unit(i as u8);
+        }
+
+        let bytes: Vec<u8> = Vec::with_capacity(5);
+
+        if i <= CompactDelta::MAX_TWO_BYTE {
+            bytes.push((CompactDelta::MIN_TWO_BYTE_LEAD as i32 + (i >> 8)) as u8);
+        } else {
+            if i <= CompactDelta::MAX_THREE_BYTE {
+                bytes.push((CompactDelta::MIN_THREE_BYTE_LEAD as i32 + (i >> 16)) as u8);
+            } else {
+                if i <= 0xffffff {
+                    bytes.push(CompactDelta::FOUR_BYTE_LEAD as u8);
+                } else {
+                    bytes.push(CompactDelta::FIVE_BYTE_LEAD);
+                    bytes.push(value)
+                }
+            }
+        }
+
         todo!()
     }
 
-    pub(crate) fn write_offset_and_length(&mut self, offset: i32, length: i32) -> i32 {
-        todo!()
-    }
-
-    pub(crate) fn write_value_and_final(&mut self, value: i32, is_final: bool) -> i32 {
-        todo!()
-    }
-
-    pub(crate) fn write_value_and_type(&mut self, value: Option<i32>, node: i32) -> i32 {
-        todo!()
-    }
-
-    pub(crate) fn write_delta_to(&mut self, jump_target: i32) -> i32 {
-        todo!()
+    fn write_bytes(&mut self, bytes: &[u8]) -> usize {
+        self.bytes.extend_from_slice(bytes);
+        self.bytes.len()
     }
 }
 
 impl BytesTrieBuilderCommon for BytesTrieWriter {
     fn common_data(&self) -> &CommonData {
-        todo!()
+        &self.common_data
     }
 
     fn common_data_mut(&mut self) -> &mut CommonData {
-        todo!()
+        &mut self.common_data
     }
 }
 

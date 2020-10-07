@@ -12,7 +12,7 @@ use super::{
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct DynamicBranchNode {
     pub(crate) value: Option<i32>,
-    chars: Vec<u16>,
+    chars: Vec<u8>,
     equal: Vec<Node>, // TODO: Maybe `Weak<Node>`?
 }
 
@@ -21,7 +21,7 @@ impl NodeContentTrait for DynamicBranchNode {
         &mut self,
         node: &Node,
         builder: &mut BytesTrieBuilder,
-        s: &[u16],
+        s: &[u8],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError> {
         if s.is_empty() {
@@ -77,7 +77,7 @@ impl DynamicBranchNode {
     }
 
     // c must not be in chars yet
-    pub(crate) fn add_char(&mut self, c: u16, node: Node) {
+    pub(crate) fn add_char(&mut self, c: u8, node: Node) {
         let i = self.find(c);
         self.chars.insert(i, c);
         self.equal.insert(i, node);
@@ -85,7 +85,7 @@ impl DynamicBranchNode {
 
     /// Binary search for the given character.
     // TODO(kpozin: Replace this with Vec::binary_search or not worth it?
-    fn find(&self, c: u16) -> usize {
+    fn find(&self, c: u8) -> usize {
         let mut start = 0;
         let mut limit = self.chars.len();
         while start < limit {

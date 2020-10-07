@@ -20,7 +20,7 @@ pub(crate) struct LinearMatchNode {
     length: i32,
     next: Node,
     string_offset: i32,
-    strings: Rc<RefCell<Vec<u16>>>,
+    strings: Rc<RefCell<Vec<u8>>>,
 }
 
 impl NodeContentTrait for LinearMatchNode {
@@ -28,7 +28,7 @@ impl NodeContentTrait for LinearMatchNode {
         &mut self,
         node: &Node,
         builder: &mut BytesTrieBuilder,
-        s: &[u16],
+        s: &[u8],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError> {
         if s.is_empty() {
@@ -155,7 +155,7 @@ impl NodeContentTrait for LinearMatchNode {
 
 impl LinearMatchNode {
     pub fn new(
-        builder_strings: Rc<RefCell<Vec<u16>>>,
+        builder_strings: Rc<RefCell<Vec<u8>>>,
         offset: i32,
         length: i32,
         next_node: Node,

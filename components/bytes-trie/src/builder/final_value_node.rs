@@ -15,7 +15,7 @@ impl NodeContentTrait for FinalValueNode {
         &mut self,
         node: &Node,
         builder: &mut BytesTrieBuilder,
-        s: &[u16],
+        s: &[u8],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError> {
         ValueNodeContentTrait::add(self, node, builder, s, value)

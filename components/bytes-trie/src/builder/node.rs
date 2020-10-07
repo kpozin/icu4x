@@ -46,7 +46,7 @@ impl Node {
     pub(crate) fn add(
         &self,
         builder: &mut BytesTrieBuilder,
-        s: &[u16],
+        s: &[u8],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError> {
         self.internal_mut().add(self, builder, s, value)
@@ -129,7 +129,7 @@ pub(crate) trait NodeTrait<C: NodeContentTrait>: GetContent<C> {
     fn add(
         &self,
         builder: &mut BytesTrieBuilder,
-        s: &[u16],
+        s: &[u8],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError>;
 }
@@ -139,7 +139,7 @@ pub(crate) trait NodeContentTrait: Debug + Eq + PartialEq + Hash + 'static {
         &mut self,
         node: &Node,
         builder: &mut BytesTrieBuilder,
-        s: &[u16],
+        s: &[u8],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError> {
         Ok(node.clone())
@@ -184,7 +184,7 @@ impl NodeInternal {
         &mut self,
         node: &Node,
         builder: &mut BytesTrieBuilder,
-        s: &[u16],
+        s: &[u8],
         value: i32,
     ) -> Result<Node, BytesTrieBuilderError> {
         match &mut self.content {
