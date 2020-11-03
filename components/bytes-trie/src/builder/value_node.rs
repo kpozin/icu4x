@@ -54,7 +54,7 @@ pub(crate) trait ValueNodeContentTrait: NodeContentTrait {
     // Used in FinalValueNode, DynamicBranchNode.
     fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
         let offset = writer.write_value_and_final(self.value().unwrap(), true);
-        node.set_offset(offset);
+        node.set_offset(offset as i32);
     }
 }
 

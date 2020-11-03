@@ -26,13 +26,14 @@ impl NodeContentTrait for BranchHeadNode {
     fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
         self.next.write(writer);
         let length = self.length;
-        let offset = if length <= writer.min_linear_match() {
+        let offset = if length <= writer.min_linear_match() as i32 {
             writer.write_value_and_type(self.value(), self.length - 1)
         } else {
             writer.write_unit((length - 1).try_into().unwrap());
             writer.write_value_and_type(self.value(), 0)
         };
-        node.set_offset(offset);
+        // TODO(kpozin): Check expected type
+        node.set_offset(offset.try_into().unwrap());
     }
 }
 

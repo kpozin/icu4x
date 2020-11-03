@@ -74,7 +74,7 @@ impl NodeContentTrait for ListBranchNode {
             }
         }
 
-        node.set_offset(writer.write_unit(self.units[unit_number as usize]));
+        node.set_offset(writer.write_unit(self.units[unit_number as usize]) as i32);
 
         // Write the rest of this node's unit-value pairs.
         for unit_number in (0..(unit_number - 1)).rev() {
@@ -86,7 +86,7 @@ impl NodeContentTrait for ListBranchNode {
                 None => (self.values[unit_number as usize], true),
             };
             writer.write_value_and_final(value, is_final);
-            node.set_offset(writer.write_unit(self.units[unit_number as usize]));
+            node.set_offset(writer.write_unit(self.units[unit_number as usize]) as i32);
         }
     }
 }

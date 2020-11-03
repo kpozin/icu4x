@@ -4,7 +4,7 @@ use {
         node::{Node, NodeContentTrait, NodeInternal},
         value_node::{ValueNode, ValueNodeContentTrait},
     },
-    std::rc::Rc,
+    std::convert::TryInto,
 };
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -24,9 +24,15 @@ impl NodeContentTrait for IntermediateValueNode {
         }
     }
 
+    /// Returns the number of bytes written.
     fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
         self.next.write(writer);
-        node.set_offset(writer.write_value_and_final(self.value().unwrap(), false))
+        node.set_offset(
+            writer
+                .write_value_and_final(self.value().unwrap(), false)
+                .try_into()
+                .unwrap(),
+        );
     }
 }
 

@@ -38,7 +38,7 @@ impl NodeContentTrait for SplitBranchNode {
         let less_than_offset = self.less_than.offset();
         assert!(less_than_offset > 0);
         writer.write_delta_to(less_than_offset);
-        node.set_offset(writer.write_unit(self.unit));
+        node.set_offset(writer.write_unit(self.unit) as i32);
     }
 }
 

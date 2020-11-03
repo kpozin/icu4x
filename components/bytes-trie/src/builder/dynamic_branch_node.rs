@@ -122,7 +122,7 @@ impl DynamicBranchNodeExt for DynamicBranchNode {
         limit: i32,
     ) -> Node {
         let length = limit - start;
-        if length > tree.max_branch_linear_sub_node_length() {
+        if length > tree.max_branch_linear_sub_node_length() as i32 {
             // Branch on the middle unit.
             let middle = start + (length / 2);
             let less_than = self.register_with_limits(node, tree, start, limit);

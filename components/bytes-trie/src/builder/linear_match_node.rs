@@ -9,6 +9,7 @@ use {
     },
     std::{
         cell::{RefCell, RefMut},
+        convert::TryInto,
         hash::Hash,
         rc::Rc,
     },
@@ -17,7 +18,7 @@ use {
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct LinearMatchNode {
     pub(crate) value: Option<i32>,
-    length: i32,
+    length: usize,
     next: Node,
     string_offset: i32,
     strings: Rc<RefCell<Vec<u8>>>,
@@ -48,11 +49,11 @@ impl NodeContentTrait for LinearMatchNode {
                 let mut suffix_node = LinearMatchNode::new(
                     self.strings.clone(),
                     i as i32,
-                    (self.length - prefix_length as i32) as i32,
+                    self.length - prefix_length,
                     self.next.clone(),
                 );
                 suffix_node.set_value(value);
-                self.length = prefix_length as i32;
+                self.length = prefix_length;
                 self.next = suffix_node.into();
                 return Ok(node.clone());
             }
@@ -94,11 +95,11 @@ impl NodeContentTrait for LinearMatchNode {
                         let this_suffix_node = LinearMatchNode::new(
                             self.strings.clone(),
                             i as i32,
-                            self.length - (prefix_length as i32 + 1),
+                            self.length - (prefix_length + 1),
                             self.next.clone(),
                         )
                         .into();
-                        self.length = prefix_length as i32;
+                        self.length = prefix_length;
                         let branch_node: Node = branch_node.into();
                         self.next = branch_node.clone();
                         (node.clone(), this_suffix_node, branch_node)
@@ -106,7 +107,7 @@ impl NodeContentTrait for LinearMatchNode {
                 let new_suffix_node = builder.create_suffix_node(&s[(start + 1)..], value);
 
                 let mut branch_node_content =
-                    <GetContent<DynamicBranchNode>>::content_mut(&branch_node);
+                    GetContent::<DynamicBranchNode>::content_mut(&branch_node);
                 branch_node_content.add_char(this_char, this_suffix_node);
                 branch_node_content.add_char(new_char, new_suffix_node.into());
                 return Ok(result);
@@ -124,7 +125,8 @@ impl NodeContentTrait for LinearMatchNode {
         // Break the linear-match sequence into chunks of at most kMaxLinearMatchLength.
         let max_linear_match_length = tree.max_linear_match_length();
         while self.length > max_linear_match_length {
-            let next_offset = self.string_offset + self.length - max_linear_match_length;
+            let next_offset =
+                self.string_offset + self.length as i32 - max_linear_match_length as i32;
             self.length -= max_linear_match_length;
             let suffix_node = LinearMatchNode::new(
                 self.strings.clone(),
@@ -146,10 +148,14 @@ impl NodeContentTrait for LinearMatchNode {
 
     fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
         self.next.write(writer);
-        writer.write_offset_and_length(self.string_offset, self.length);
-        let offset =
-            writer.write_value_and_type(self.value(), writer.min_linear_match() + self.length - 1);
-        node.set_offset(offset);
+        writer.write_offset_and_length(self.string_offset.try_into().unwrap(), self.length);
+        let offset = writer.write_value_and_type(
+            self.value(),
+            (writer.min_linear_match() + self.length - 1)
+                .try_into()
+                .unwrap(),
+        );
+        node.set_offset(offset.try_into().unwrap());
     }
 }
 
@@ -157,7 +163,7 @@ impl LinearMatchNode {
     pub fn new(
         builder_strings: Rc<RefCell<Vec<u8>>>,
         offset: i32,
-        length: i32,
+        length: usize,
         next_node: Node,
     ) -> Self {
         LinearMatchNode {

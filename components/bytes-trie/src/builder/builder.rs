@@ -21,6 +21,7 @@ enum State {
     Built,
 }
 
+/// Data fields that are shared among the different phases of the `BytesTrieBuilder`.
 #[derive(Debug)]
 pub(crate) struct CommonData {
     /// Strings and sub-strings for linear-match nodes.
@@ -71,11 +72,11 @@ pub(crate) trait BytesTrieBuilderCommon {
         new_node
     }
 
-    fn min_linear_match(&self) -> i32 {
+    fn min_linear_match(&self) -> usize {
         todo!()
     }
 
-    fn max_branch_linear_sub_node_length(&self) -> i32 {
+    fn max_branch_linear_sub_node_length(&self) -> usize {
         todo!()
     }
 
@@ -83,7 +84,7 @@ pub(crate) trait BytesTrieBuilderCommon {
         todo!()
     }
 
-    fn max_linear_match_length(&self) -> i32 {
+    fn max_linear_match_length(&self) -> usize {
         todo!()
     }
 }
@@ -100,7 +101,6 @@ impl BytesTrieBuilder {
     fn build_impl(self, build_mode: BuildMode) -> Result<Vec<u8>, BytesTrieBuilderError> {
         let tree = BytesTrieNodeTree::from_builder(self, build_mode)?;
         let writer = BytesTrieWriter::from_node_tree(tree)?;
-        // writer.ma
         todo!()
     }
 
@@ -135,7 +135,7 @@ impl BytesTrieBuilder {
             let data = self.common_data();
             let offset = data.strings.borrow().len();
             data.strings.borrow_mut().extend_from_slice(s);
-            LinearMatchNode::new(data.strings.clone(), offset as i32, s.len() as i32, node).into()
+            LinearMatchNode::new(data.strings.clone(), offset as i32, s.len(), node).into()
         };
         node
     }
@@ -158,6 +158,7 @@ pub(crate) struct BytesTrieNodeTree {
 }
 
 impl BytesTrieNodeTree {
+    /// Turns the builder into a tree of nodes that is 1:1 equivalent ot the runtime data structure.
     fn from_builder(
         builder: BytesTrieBuilder,
         build_mode: BuildMode,
@@ -220,17 +221,34 @@ impl BytesTrieWriter {
         })
     }
 
+    fn mark_right_edges_first(&mut self) {
+        self.common_data
+            .root
+            .as_mut()
+            .unwrap()
+            .mark_right_edges_first(-1);
+    }
+
+    fn write_all(&mut self) -> &[u8] {
+        let root = self.common_data.root.as_ref().unwrap().clone();
+        root.write(self);
+        &self.bytes
+    }
+
     pub(crate) fn write_unit(&mut self, unit: u8) -> usize {
         self.bytes.push(unit);
         self.bytes.len()
     }
 
     pub(crate) fn write_offset_and_length(&mut self, offset: usize, length: usize) -> usize {
-        let source = &self.common_data().strings.borrow()[offset..(offset + length)];
+        let source = &self.common_data.strings.borrow()[offset..(offset + length)];
         self.bytes.extend_from_slice(source);
         self.bytes.len()
     }
 
+    /// Note that the value can indeed be negative.
+    ///
+    /// Returns the number of bytes written
     pub(crate) fn write_value_and_final(&mut self, value: i32, is_final: bool) -> usize {
         let final_mask: u8 = if is_final { VALUE_IS_FINAL } else { 0 };
         if (0..=CompactValue::MAX_ONE_BYTE as i32).contains(&value) {
@@ -241,7 +259,7 @@ impl BytesTrieWriter {
         let mut bytes: Vec<u8> = Vec::with_capacity(5);
         // Doesn't fit in three bytes.
         if value < 0 || value > 0xffffff {
-            bytes.push(CompactValue::FIVE_BYTE_LEAD as u8);
+            bytes.push(CompactValue::FIVE_BYTE_LEAD);
             bytes.push((value >> 24) as u8);
             bytes.push((value >> 16) as u8);
             bytes.push((value >> 8) as u8);
@@ -273,6 +291,7 @@ impl BytesTrieWriter {
         }
     }
 
+    /// Returns the new length of the full bytes array.
     pub(crate) fn write_delta_to(&mut self, jump_target: i32) -> usize {
         let i = self.bytes.len() as i32 - jump_target;
         assert!(i > 0);
@@ -280,24 +299,38 @@ impl BytesTrieWriter {
             return self.write_unit(i as u8);
         }
 
-        let bytes: Vec<u8> = Vec::with_capacity(5);
+        let mut bytes: Vec<u8> = Vec::with_capacity(5);
 
         if i <= CompactDelta::MAX_TWO_BYTE {
+            // length = 1
             bytes.push((CompactDelta::MIN_TWO_BYTE_LEAD as i32 + (i >> 8)) as u8);
         } else {
             if i <= CompactDelta::MAX_THREE_BYTE {
-                bytes.push((CompactDelta::MIN_THREE_BYTE_LEAD as i32 + (i >> 16)) as u8);
+                // length = 2
+                bytes.resize(2, 0);
+                bytes[0] = (CompactDelta::MIN_THREE_BYTE_LEAD as i32 + (i >> 16)) as u8;
             } else {
                 if i <= 0xffffff {
-                    bytes.push(CompactDelta::FOUR_BYTE_LEAD as u8);
+                    // length = 3
+                    bytes.resize(3, 0);
+                    bytes[0] = CompactDelta::FOUR_BYTE_LEAD as u8;
                 } else {
-                    bytes.push(CompactDelta::FIVE_BYTE_LEAD);
-                    bytes.push(value)
+                    // length = 4
+                    bytes.resize(4, 0);
+                    bytes[0] = CompactDelta::FIVE_BYTE_LEAD;
+                    // This seems to be a no-op.
+                    // Per the C++ and Java source, it's immediately overwritten by `i >> 16`.
+                    bytes[1] = (i >> 24) as u8;
                 }
+                // Another no-op. Overwritten below by `i >> 8`.
+                bytes[1] = (i >> 16) as u8;
             }
+            bytes[1] = (i >> 8) as u8;
         }
+        let len = bytes.len();
+        bytes[len - 1] = i as u8;
 
-        todo!()
+        self.write_bytes(&bytes)
     }
 
     fn write_bytes(&mut self, bytes: &[u8]) -> usize {
