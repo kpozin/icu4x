@@ -6,20 +6,14 @@ use {
         node::{Node, NodeContent, NodeInternal, NodeTrait},
         value_node::{ValueNode, ValueNodeContentTrait},
     },
-    crate::trie::encoding::{CompactDelta, CompactInt, CompactValue, VALUE_IS_FINAL},
+    crate::trie::encoding::{
+        CompactDelta, CompactInt, CompactValue, MAX_BRANCH_LINEAR_SUB_NODE_LENGTH,
+        MAX_LINEAR_MATCH_LENGTH, MIN_LINEAR_MATCH, VALUE_IS_FINAL,
+    },
     std::{cell::RefCell, collections::HashSet, convert::TryInto, rc::Rc},
 };
 
 const MAX_KEY_LENGTH: usize = 0xffff;
-
-/// Builder state.
-#[derive(Debug, Eq, PartialEq)]
-enum State {
-    Adding,
-    BuildingFast,
-    BuildingSmall,
-    Built,
-}
 
 /// Data fields that are shared among the different phases of the `BytesTrieBuilder`.
 #[derive(Debug)]
@@ -73,19 +67,19 @@ pub(crate) trait BytesTrieBuilderCommon {
     }
 
     fn min_linear_match(&self) -> usize {
-        todo!()
+        MIN_LINEAR_MATCH as usize
     }
 
     fn max_branch_linear_sub_node_length(&self) -> usize {
-        todo!()
+        MAX_BRANCH_LINEAR_SUB_NODE_LENGTH as usize
     }
 
     fn match_nodes_can_have_values(&self) -> bool {
-        todo!()
+        false
     }
 
     fn max_linear_match_length(&self) -> usize {
-        todo!()
+        MAX_LINEAR_MATCH_LENGTH as usize
     }
 }
 
@@ -100,8 +94,9 @@ impl BytesTrieBuilder {
 
     fn build_impl(self, build_mode: BuildMode) -> Result<Vec<u8>, BytesTrieBuilderError> {
         let tree = BytesTrieNodeTree::from_builder(self, build_mode)?;
-        let writer = BytesTrieWriter::from_node_tree(tree)?;
-        todo!()
+        let mut writer = BytesTrieWriter::from_node_tree(tree)?;
+        writer.mark_right_edges_first();
+        Ok(writer.into_bytes())
     }
 
     pub(crate) fn add_impl(&mut self, s: &[u8], value: i32) -> Result<(), BytesTrieBuilderError> {
@@ -124,8 +119,6 @@ impl BytesTrieBuilder {
 
         Ok(())
     }
-
-    // pub(crate) build_impl(&mut self)
 
     pub(crate) fn create_suffix_node(&mut self, s: &[u8], value: i32) -> Node {
         let node = self.register_final_value(value);
@@ -229,10 +222,10 @@ impl BytesTrieWriter {
             .mark_right_edges_first(-1);
     }
 
-    fn write_all(&mut self) -> &[u8] {
+    fn into_bytes(mut self) -> Vec<u8> {
         let root = self.common_data.root.as_ref().unwrap().clone();
-        root.write(self);
-        &self.bytes
+        root.write(&mut self);
+        self.bytes
     }
 
     pub(crate) fn write_unit(&mut self, unit: u8) -> usize {
