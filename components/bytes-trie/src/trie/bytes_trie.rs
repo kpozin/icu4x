@@ -1,5 +1,3 @@
-use core::future::poll_fn;
-
 use crate::trie::encoding::*;
 
 pub struct BytesTrie {
@@ -15,7 +13,7 @@ pub struct BytesTrieEntry<'a> {
 impl<'a> BytesTrieEntry<'a> {
     /// The
     pub fn key(&'a self) -> &'a [u8] {
-        unimplemented!()
+        self.key
     }
 
     pub fn key_len(&self) -> usize {
@@ -23,8 +21,8 @@ impl<'a> BytesTrieEntry<'a> {
     }
 
     /// The value associated with the byte sequence
-    pub fn value(&self) -> i32 {
-        unimplemented!()
+    pub fn value(&self) -> Option<i32> {
+        self.value
     }
 }
 
@@ -58,8 +56,14 @@ pub struct BytesTrieIterator<'a> {
 }
 
 impl<'a> BytesTrieIterator<'a> {
-    fn new() -> Self {
-        todo!()
+    fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            bytes,
+            position: Some(0),
+            stack: vec![],
+            key_buffer: vec![],
+            max_key_length: None,
+        }
     }
 
     pub fn next(&mut self) -> Option<BytesTrieEntry> {
@@ -135,7 +139,9 @@ impl<'a> BytesTrieIterator<'a> {
                     }
                     BranchNextResult::NewPosition(new_position) => new_position,
                 };
-            } else /* if node >= MIN_LINEAR_MATCH */ {
+            } else
+            /* if node >= MIN_LINEAR_MATCH */
+            {
                 // Linear-match node, append `added_length` bytes to buffer.
                 let added_length = (node - MIN_LINEAR_MATCH + 1) as usize;
                 match self.max_key_length {
