@@ -11,3 +11,5 @@ mod node;
 mod split_branch_node;
 mod util;
 mod value_node;
+
+pub use builder::BytesTrieBuilder;

@@ -1,5 +1,9 @@
 use std::convert::TryInto;
 
+/// Unfortunately, after serialization, there is no way to distinguish between an empty value and an
+/// actual value of `-1`.
+pub(crate) const EMPTY_VALUE: i32 = -1;
+
 // Node lead byte values.
 
 // 00..0f: Branch node. If node!=0 then the length is node+1, otherwise

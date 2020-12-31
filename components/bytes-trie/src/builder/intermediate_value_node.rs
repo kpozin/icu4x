@@ -29,7 +29,7 @@ impl NodeContentTrait for IntermediateValueNode {
         self.next.write(writer);
         node.set_offset(
             writer
-                .write_value_and_final(self.value().unwrap(), false)
+                .write_value_and_final(self.value(), false)
                 .try_into()
                 .unwrap(),
         );

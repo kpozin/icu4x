@@ -2,6 +2,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum BytesTrieBuilderError {
+    #[error("Can't build without any entries")]
+    EmptyBuilder,
+
     #[error("Duplicate string")]
     DuplicateString,
 

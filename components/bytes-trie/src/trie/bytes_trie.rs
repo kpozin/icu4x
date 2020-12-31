@@ -1,7 +1,18 @@
 use crate::trie::encoding::*;
 
+#[derive(Debug)]
 pub struct BytesTrie {
     bytes: Vec<u8>,
+}
+
+impl BytesTrie {
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        BytesTrie { bytes }
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
 }
 
 #[derive(Debug)]

@@ -9,6 +9,7 @@ use {
         linear_match_node::LinearMatchNode,
         node::{Node, NodeContent, NodeContentTrait, NodeInternal},
     },
+    crate::trie::encoding::EMPTY_VALUE,
     std::{cell::RefCell, fmt::Debug, hash::Hash, rc::Rc},
 };
 
@@ -46,14 +47,14 @@ pub(crate) trait ValueNodeContentTrait: NodeContentTrait {
             return Err(BytesTrieBuilderError::DuplicateString);
         }
         // Replace self with a node for the remaining string suffix and value.
-        let mut node = builder.create_suffix_node(s, value);
+        let node = builder.create_suffix_node(s, value);
         node.set_value(value);
         Ok(node.into())
     }
 
     // Used in FinalValueNode, DynamicBranchNode.
     fn write(&mut self, node: &Node, writer: &mut BytesTrieWriter) {
-        let offset = writer.write_value_and_final(self.value().unwrap(), true);
+        let offset = writer.write_value_and_final(self.value(), true);
         node.set_offset(offset as i32);
     }
 }

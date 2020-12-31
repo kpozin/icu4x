@@ -10,6 +10,7 @@ license-file = "../../LICENSE"
 categories = ["internationalization"]
 include = [
     "src/**/*",
+    "test/**/*",
     "Cargo.toml",
 ]
 
@@ -19,5 +20,6 @@ thiserror = "1.0.20"
 
 [dev-dependencies]
 anyhow = "1.0.31"
+assert_matches = "1.4.0"
 criterion = "0.3"
 pretty_assertions = "0.6.1"

@@ -70,7 +70,7 @@ impl NodeContentTrait for ListBranchNode {
                 right_edge.write(writer);
             }
             None => {
-                writer.write_value_and_final(self.values[unit_number as usize], true);
+                writer.write_value_and_final(Some(self.values[unit_number as usize]), true);
             }
         }
 
@@ -85,7 +85,7 @@ impl NodeContentTrait for ListBranchNode {
                 }
                 None => (self.values[unit_number as usize], true),
             };
-            writer.write_value_and_final(value, is_final);
+            writer.write_value_and_final(Some(value), is_final);
             node.set_offset(writer.write_unit(self.units[unit_number as usize]) as i32);
         }
     }

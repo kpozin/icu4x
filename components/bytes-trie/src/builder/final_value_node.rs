@@ -27,7 +27,11 @@ impl NodeContentTrait for FinalValueNode {
 }
 
 impl FinalValueNode {
-    pub fn new(value: i32) -> FinalValueNode {
-        FinalValueNode { value: Some(value) }
+    pub fn new(value: i32) -> Self {
+        Self { value: Some(value) }
+    }
+
+    pub fn empty() -> Self {
+        Self { value: None }
     }
 }

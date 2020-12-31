@@ -6,9 +6,12 @@ use {
         node::{Node, NodeContent, NodeInternal, NodeTrait},
         value_node::{ValueNode, ValueNodeContentTrait},
     },
-    crate::trie::encoding::{
-        CompactDelta, CompactInt, CompactValue, MAX_BRANCH_LINEAR_SUB_NODE_LENGTH,
-        MAX_LINEAR_MATCH_LENGTH, MIN_LINEAR_MATCH, VALUE_IS_FINAL,
+    crate::trie::{
+        encoding::{
+            CompactDelta, CompactInt, CompactValue, EMPTY_VALUE, MAX_BRANCH_LINEAR_SUB_NODE_LENGTH,
+            MAX_LINEAR_MATCH_LENGTH, MIN_LINEAR_MATCH, VALUE_IS_FINAL,
+        },
+        BytesTrie,
     },
     std::{cell::RefCell, collections::HashSet, convert::TryInto, rc::Rc},
 };
@@ -27,6 +30,17 @@ pub(crate) struct CommonData {
     nodes: HashSet<Node>,
 
     lookup_final_value_node: Node,
+}
+
+impl CommonData {
+    pub(crate) fn new() -> Self {
+        CommonData {
+            strings: Rc::new(RefCell::new(Vec::new())),
+            root: None,
+            nodes: HashSet::new(),
+            lookup_final_value_node: FinalValueNode::empty().into(),
+        }
+    }
 }
 
 /// Initial state of `BytesTrieBuilder`.
@@ -84,22 +98,46 @@ pub(crate) trait BytesTrieBuilderCommon {
 }
 
 impl BytesTrieBuilder {
-    pub fn build_fast(self) -> Result<Vec<u8>, BytesTrieBuilderError> {
+    pub fn new() -> Self {
+        Self {
+            common_data: CommonData::new(),
+        }
+    }
+
+    pub fn build_fast(self) -> Result<BytesTrie, BytesTrieBuilderError> {
         self.build_impl(BuildMode::Fast)
     }
 
-    pub fn build_small(self) -> Result<Vec<u8>, BytesTrieBuilderError> {
+    pub fn build_small(self) -> Result<BytesTrie, BytesTrieBuilderError> {
         self.build_impl(BuildMode::Small)
     }
 
-    fn build_impl(self, build_mode: BuildMode) -> Result<Vec<u8>, BytesTrieBuilderError> {
+    fn build_impl(self, build_mode: BuildMode) -> Result<BytesTrie, BytesTrieBuilderError> {
         let tree = BytesTrieNodeTree::from_builder(self, build_mode)?;
         let mut writer = BytesTrieWriter::from_node_tree(tree)?;
         writer.mark_right_edges_first();
-        Ok(writer.into_bytes())
+        let bytes = writer.into_bytes();
+        let trie = BytesTrie::from_bytes(bytes);
+        Ok(trie)
     }
 
-    pub(crate) fn add_impl(&mut self, s: &[u8], value: i32) -> Result<(), BytesTrieBuilderError> {
+    pub fn add(&mut self, s: &[u8], value: i32) -> Result<&mut Self, BytesTrieBuilderError> {
+        self.add_impl(s, value)?;
+        Ok(self)
+    }
+
+    pub fn add_string(
+        &mut self,
+        s: impl AsRef<str>,
+        value: i32,
+    ) -> Result<&mut Self, BytesTrieBuilderError> {
+        let s = s.as_ref();
+        let bytes = s.as_bytes();
+        self.add_impl(bytes, value)?;
+        Ok(self)
+    }
+
+    fn add_impl(&mut self, s: &[u8], value: i32) -> Result<(), BytesTrieBuilderError> {
         if s.len() > MAX_KEY_LENGTH {
             return Err(BytesTrieBuilderError::KeyTooLong);
         }
@@ -112,7 +150,7 @@ impl BytesTrieBuilder {
                 self.common_data_mut()
                     .root
                     .take()
-                    .unwrap()
+                    .expect("Impossible state. `root` should not be `None`")
                     .add(self, s, value)?,
             );
         }
@@ -163,7 +201,12 @@ impl BytesTrieNodeTree {
             build_mode,
         };
 
-        let root = tree.common_data().root.as_ref().unwrap().clone();
+        let root = tree
+            .common_data()
+            .root
+            .as_ref()
+            .ok_or_else(|| BytesTrieBuilderError::EmptyBuilder)?
+            .clone();
         root.register(&mut tree);
 
         Ok(tree)
@@ -239,10 +282,12 @@ impl BytesTrieWriter {
         self.bytes.len()
     }
 
-    /// Note that the value can indeed be negative.
+    /// Note that the value can indeed be negative. If the given value is `None`, [`EMPTY_VALUE`]
+    /// will be written.
     ///
-    /// Returns the number of bytes written
-    pub(crate) fn write_value_and_final(&mut self, value: i32, is_final: bool) -> usize {
+    /// Returns the number of bytes written.
+    pub(crate) fn write_value_and_final(&mut self, value: Option<i32>, is_final: bool) -> usize {
+        let value = value.unwrap_or(EMPTY_VALUE);
         let final_mask: u8 = if is_final { VALUE_IS_FINAL } else { 0 };
         if (0..=CompactValue::MAX_ONE_BYTE as i32).contains(&value) {
             let unit = ((CompactValue::MIN_ONE_BYTE_LEAD as i32 + value) << 1) | final_mask as i32;
@@ -277,7 +322,7 @@ impl BytesTrieWriter {
 
     pub(crate) fn write_value_and_type(&mut self, value: Option<i32>, node: i32) -> usize {
         let offset = self.write_unit(node as u8);
-        if let Some(value) = value {
+        if value.is_some() {
             self.write_value_and_final(value, false)
         } else {
             offset
